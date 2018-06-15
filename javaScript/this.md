@@ -83,7 +83,7 @@ setTimeout( obj.test, 1000 ); // 1
 ```
 &emsp;&emsp;setTimeout的第一个参数是通过obj对象找到的函数test，本质上obj依然是起到找到test函数的桥梁作用，因此test依然是作为函数调用的。<br/>
 #### 3、间接调用传递null或undefined作为执行上下文
-&emsp;&emsp;函数的间接调用是指通过call、apply或bind函数明确指定函数的执行上下文，当我们指定null或者undefined作为间接调用的上下文时，函数实际是**作为函数调用**的，即在严格模式下this为undefined，非严格模式下this为全局对象。<br/>
+&emsp;&emsp;函数的间接调用是指通过call、apply或bind函数明确指定函数的执行上下文，当我们指定null或者undefined作为间接调用的上下文时，函数实际是**作为函数调用**的。但是有一点需要注意：call()和apply()在严格模式下传入空值则上下文为空值，并不是因为遵循**作为函数调用**在严格模式下执行上下文为全局对象的规则，而是因为在严格模式下call()和apply()的第一个实参都会变成this的值，哪怕传入的实参是原始值甚至是null或undefined。<br/>
 ```js
 var a = 1;
 
