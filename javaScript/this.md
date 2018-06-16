@@ -182,9 +182,62 @@ console.log( bar.a ); // 1
 ### 四、间接调用
 &emsp;&emsp;在JavaScript中，对象中的方法属性仅仅存储的是一个函数的地址，函数与对象的耦合度没有想象中的高。通过对象来调用函数，函数的执行上下文（this指向）就是该对象。如果通过对象来找到函数的地址，就能指定函数的执行上下文，可以使用call()、apply()和bind()方法来实现。换而言之，任何函数可以作为任何对象的方法来调用，哪怕函数并不是那个对象的方法。<br/>
 #### 1、call()和apply()
-&emsp;&emsp;
-#### 1、bind()
-&emsp;&emsp;
+&emsp;&emsp;每个函数都call()和apply()方法，函数调用这两个方法是可以明确指定执行上下文。从绑定上下文的角度来说这两个方法是一样的，第一个参数传递的都是指定的执行上下文。所不同的在于call()方法剩余的参数将会作为函数的实参来使用，可以有多个；apply()则最多只接收两个参数，第一个是执行上下文，第二个是一个数组，数组中的每个元素都将作为函数的实参。如下代码所示：<br/>
+```js
+var a = 1
+function test(b,c) {
+    console.log(`a:${this.a},b:${b},c:${c}`)
+}
+var obj = {
+    a:2
+}
+test.call(obj,3,4) // a:2,b:3,c:4
+
+var d = 11
+function test2(b,c) {
+    console.log(`b:${b},c:${c},d:${this.d}`)
+}
+var obj2 = {
+    d:12
+}
+test2.apply(obj2,[13,14]) // b:13,c:14,d:12
+```
+&emsp;&emsp;在非严格模式下，call()、apply()的第一个参数传入null或者undefined时，函数的执行上下文被替代为全局对象，如果传入的是基础类型，则为替代为相应的包装对象。在严格模式下，遵循的规则是传入的值即为执行上下文，不替换，不自动装箱。如下代码所示：<br/>
+```js
+var a = 1
+function test1 () {
+    console.log(this.a)
+}
+test1.call(null) // 1
+test1.call(undefined) // 1
+test1.apply(null) // 1
+test1.apply(undefined) // 1
+```
+***
+```js
+'use strict'
+function test1 () {
+    console.log(this)
+}
+test1.call(null) // null
+test1.call(undefined) // undefined
+test1.call(1) // 1
+test1.apply(null) // null
+test1.apply(undefined) // undefined
+test1.apply(1) // 1
+```
+&emsp;&emsp;apply()有一个较为常见的用法：将数组转化成函数的参数序列。ES6中增加了扩展运算符“...”来实现该功能。如下代码所示：<br/>
+```js
+var arr = [1,19,4,54,69,9]
+
+var a = Math.max.apply(null,arr)
+console.log(a) // 69
+
+var b = Math.max(...arr)
+console.log(b) // 69
+```
+#### 2、bind()
+&emsp;&emsp;bind()函数可以接收多个参数，返回一个功能相同、执行上下文确定、参数经过初始化的函数。其中第一个参数为要绑定的执行上下文，剩余参数为返回函数的预定义值。
 ### 五、规则的优先级
 ### 六、词法this
 ### 七、总结
