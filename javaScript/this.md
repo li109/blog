@@ -165,10 +165,10 @@ obj.add().minus().add().print(); // 2
 ### 三、作为构造函数调用
 &emsp;&emsp;在JavaScript中，构造函数没有任何特殊的地方，任何函数只要是被new关键字调用该函数就是构造函数，任何不被new关键字调用的都不是构造函数。<br/>
 &emsp;&emsp;当使用new关键字来调用函数时，会经历以下四步：<br/>
-> 1、创建一个新的空对象  
-> 2、这个空对象继承构造函数的prototype属性  
-> 3、构造函数将新创建的对象作为执行上下文来进行初始化  
-> 4、如果构造函数有返回值并且是对象，则返回构造函数的返回值，否则返回新创建的对象
+> 1、创建一个新的空对象。  
+> 2、这个空对象继承构造函数的prototype属性。  
+> 3、构造函数将新创建的对象作为执行上下文来进行初始化。  
+> 4、如果构造函数有返回值并且是对象，则返回构造函数的返回值，否则返回新创建的对象。
 >
 &emsp;&emsp;约定俗成的是：在编写构造函数时函数名首字母大写，且构造函数不写返回值。因此一般来说，new关键字调用构造函数创建的新对象作为构造函数的this。如下代码所示：<br/>
 ```js
@@ -237,7 +237,141 @@ var b = Math.max(...arr)
 console.log(b) // 69
 ```
 #### 2、bind()
-&emsp;&emsp;bind()函数可以接收多个参数，返回一个功能相同、执行上下文确定、参数经过初始化的函数。其中第一个参数为要绑定的执行上下文，剩余参数为返回函数的预定义值。
+&emsp;&emsp;bind()函数可以接收多个参数，返回一个功能相同、执行上下文确定、参数经过初始化的函数。其中第一个参数为要绑定的执行上下文，剩余参数为返回函数的预定义值。bind()函数的作用有两点：1、为函数绑定执行上下文；2、进行函数柯里化。如下代码所示：<br/>
+```js
+var a = 1
+
+function func(b,c) {
+    console.log(`a:${this.a},b:${b},c:${c}`)
+}
+
+var obj = {
+    a: 2
+}
+
+var test = func.bind(obj,3)
+
+test(4) // a:2,b:3,c:4
+```
+&emsp;&emsp;bind()方法是ES5加入的，但是我们可以很轻易的在ES3中通过apply()模拟出来，下面代码是MDN上的bind()的polyfill。<br/>
+```js
+if (!Function.prototype.bind) {
+    Function.prototype.bind = function(oThis) {
+        if (typeof this !== "function") {
+            // 可能的与 ECMAScript 5 内部的 IsCallable 函数最接近的东西，
+            throw new TypeError( "Function.prototype.bind - what " +
+                "is trying to be bound is not callable"
+            );
+        }
+
+        var aArgs = Array.prototype.slice.call( arguments, 1 ),
+            fToBind = this,
+            fNOP = function(){},
+            fBound = function(){
+                return fToBind.apply(
+                    (this instanceof fNOP &&oThis ? this : oThis),
+                    aArgs.concat( Array.prototype.slice.call( arguments ) )
+                );
+            };
+
+        fNOP.prototype = this.prototype;
+        fBound.prototype = new fNOP();
+
+        return fBound;
+    };
+}
+```
 ### 五、规则的优先级
+&emsp;&emsp;函数的调用有时不只一种，那么不同调用方式的规则的优先级就最终决定了this的指向。那就让我们来比较不同调用方式的规则优先级。如下代码所示，当函数作为方法调用的时候，this指向调用方法的对象，当作为函数调用时，this指向在非严格模式下指向全局对象，在严格模式下指向undefined。因此，方法调用的优先级高于函数调用。<br/>
+```js
+var a = 1
+
+var obj = {
+    a:2,
+    test:test
+}
+
+function test () {
+    console.log(this.a)
+}
+
+var b = obj.test
+
+obj.test() // 2
+b() // 1
+```
+&emsp;&emsp;如下代码所示是函数作为方法调用分别和间接调用、构造函数调用作对比。由代码可知：函数作为方法调用优先级分别小于间接调用和构造函数调用。<br/>
+```js
+function test(para) {
+    this.a = para
+}
+
+var obj1 = {
+    test: test
+}
+
+var obj2 = {}
+      
+obj1.test( 2 )
+console.log( obj1.a ) // 2
+
+obj1.test.call( obj2, 3 )
+console.log( obj2.a ) // 3
+
+var bar = new obj1.test( 4 )
+console.log( obj1.a ) // 2
+console.log( bar.a ) // 4
+```
+&emsp;&emsp;new关键字后面是一个函数，而call()和apply()并不是返回一个函数，而是依照传入参数来执行函数，因此形如new foo.call(obj)的代码是不被允许的。ES5中的bind()返回的是一个函数，可以与new关键字同时使用。如下代码所示，bind()返回的函数用作构造函数，将忽略传入bind()的this值，原始函数会以构造函数的形式调用，传入的参数也会原封不动的传入原始函数。<br/>
+```js
+function test(something) {
+    this.a = something;
+}
+
+var obj = {};
+
+var bar = test.bind( obj );
+bar( 2 );
+console.log( obj.a ); // 2
+
+var baz = new bar( 3 );
+console.log( obj.a ); // 2
+console.log( baz.a ); // 3
+```
+&emsp;&emsp;总之，构造函数的优先级大于间接调用，间接调用的优先级大于方法调用，方法调用的优先级大于函数调用。<br/>
 ### 六、词法this
+&emsp;&emsp;this关键字没有作用域限制，函数的this指向调用该函数的对象，在嵌套函数汇中，如果想访问外层函数的this值，可以将外层函数的this赋值给一个变量，用词法作用域来代替传统的this机制。如下代码所示：<br/>
+```js
+function foo() {
+    var self = this // 词法上捕获`this`
+    setTimeout( function(){
+        console.log( self.a )
+    }, 1000 )
+}
+
+var obj = {
+    a: 2
+};
+
+foo.call( obj ) // 2
+```
+&emsp;&emsp;ES6新增了箭头函数，箭头函数体内的this对象，就是定义时所在的对象，而不是使用时所在的对象。如下代码所示，箭头函数能够将this固化，箭头函数内部没有绑定this的机制，其内部的this就是外层代码块的this。传统的this机制让很多人与词法作用域混淆，因此有了将this赋值给变量的行为，ES6只是将这种行为加以标准化而已。<br/>
+```js
+var a = 21
+
+function test() {
+    setTimeout(() => {
+        console.log('a:', this.a)
+    }, 1000)
+}
+
+test.call({ a: 42 }) // 2
+```
 ### 七、总结
+&emsp;&emsp;JavaScript中的this机制跟词法作用域没有关系，根据函数调用的方式不同，确定this指向的规则也不相同。在确定this指向时可以遵循以下步骤：<br/>
+>1、函数是否为**构造函数调用**，即函数跟在new关键字后面，如果是，this就是新构建的对象。<br/>
+>2、函数是否为**间接调用**，即通过call()、apply()或者bind()调用，如果是，this就是明确指定的对象。<br/>
+>3、函数是否为**作为方法调用**，即通过对象来调用函数，如果是，this就是该对象。<br/>
+>4、否则，即为**作为函数的调用**，在非严格模式下，this指向全局对象，在严格模式下，this为undefined。<br/>
+>
+&emsp;&emsp;可以将外层函数的this赋值给一个变量，使得内层函数以词法作用域的规则来访问该this。ES6新增的箭头函数便是使用词法作用域来决定this绑定的。<br/>
