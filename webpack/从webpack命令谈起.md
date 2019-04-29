@@ -37,9 +37,9 @@ exit $ret
   node  "%~dp0\..\_webpack@4.30.0@webpack\bin\webpack.js" %*
 )
 ```
-&emsp;&emsp;这两个文件的功能是一样的：使用 node 命令执行 /node_modules 中安装的 webpack 文件夹中的 /bin/webpack.js。<br/>
-## 二、/webpack/bin/webpack.js
-&emsp;&emsp;/webpack/bin/webpack.js 的功能是检测是否安装 webpack-cli 与 webpack-command 包，然后根据具体情况分别进行处理。<br/>
+&emsp;&emsp;这两个文件的功能是一样的：使用 node 命令执行 /node_modules 中安装的 webpack 执行文件。例如使用 webpack 4.30.0版本则对应 /node_modules/_webpack@4.30.0@webpack/bin/webpack.js 文件。<br/>
+## 二、webpack 包的 /bin/webpack.js
+&emsp;&emsp;webpack包的 /bin/webpack.js 的功能是检测是否安装 webpack-cli 与 webpack-command 包，然后根据具体情况分别进行处理。<br/>
 &emsp;&emsp;webpack4.0 强制要求必须使用一种 CLI 包，官网上甚至直接说必须安装 webpack-cli，因为 webpack-command 现在很不推荐使用，源码中保留这种判断是为了防止依然有用户使用 webpack-command 的情况。<br/>
 &emsp;&emsp;webpack-command 被弃用的原因主要有以下五点：<br/>
 > 1、webpack-cli 非常稳定，具有更多功能。<br/>
@@ -64,16 +64,16 @@ exit $ret
 
 ### 2、webpack-cli 与 webpack-command 安装其一
 &emsp;&emsp;如果安装其中一个包，首先获取该包 package.json 文件的绝对路径，然后加载 package.json 文件，再根据 package.json 文件中的 bin 选项，加载该包的执行文件。<br/>
-&emsp;&emsp;最常见的是只安装 webpack-cli 包，如果是这样则加载执行 /webpack-cli/bin/cli.js 文件。<br/>
+&emsp;&emsp;最常见的是只安装 webpack-cli 包，如果是这样则加载执行 webpack-cli 包的 /bin/cli.js 文件。本例中是加载执行 /node_modules/_webpack-cli@3.3.1@webpack-cli/bin/cli.js 文件<br/>
 ### 3、webpack-cli 与 webpack-command 都已安装
 &emsp;&emsp;如果两个包都已安装，则会显示如下信息，提醒用户只需一个 CLI 包，可以删除其中一个包或者直接通过二进制文件使用它们。<br/>
 > You have installed webpack-cli and webpack-command together. To work with the "webpack" command you need only one CLI package, please remove one of them or use them directly via their binary.<br/>
 
-## 三、/webpack-cli/bin/cli.js
+## 三、webpack-cli 包的 /bin/cli.js
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
-## 四、/webpack/lib/webpack.js
+## 四、webpack 包的 /lib/webpack.js
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
