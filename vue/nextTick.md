@@ -16,35 +16,23 @@
 &emsp;&emsp;JS 代码中通过 XMLHttpRequest 发起 ajax 请求时，会使用**异步http请求线程**来管理，在状态改变时，该线程会将对应的回调放入任务队列中，等待 JS 引擎线程读取。<br/>
 ### 2、Event Loop
 &emsp;&emsp;Javascript 任务分为**同步任务**和**异步任务**，同步任务是指调用之后立刻得到结果的任务；异步任务是指调用之后无法立刻得到结果，需要进行额外操作的任务。<br/>
-&emsp;&emsp;JS 引擎线程顺序执行**执行栈**中的任务，**执行栈中只有同步任务**，遇到异步任务就交给相应的线程处理。例如在代码块中有 setTimeout() 方法的调用，则将其交由**定时触发器线程**处理，定时结束之后**定时触发器线程**将方法的回调放入自身的任务队列中，当执行栈中的任务处理完之后会读取各线程中任务队列中的任务。<br/>
-&emsp;&emsp;前面是从同步异步的角度来划分任务的，从执行顺序来说，任务也分为两种：macrotask（宏任务）、microtask（微任务）。macrotask 执行完之后返回的同步任务会放在执行栈中，microtask 执行完之后返回的同步任务会放在微任务队列中。<br/>
-> macrotask包括：script（JS文件）、setTimeout、setInterval、setImmediate、I/O、ajax、eventListener、UI rendering。<br/>
+&emsp;&emsp;JS 引擎线程顺序执行**执行栈**中的任务，**执行栈中只有同步任务**，遇到异步任务就交给相应的线程处理。例如在代码块中有 setTimeout() 方法的调用，则将其交由**定时触发器线程**处理，定时结束之后**定时触发器线程**将方法的回调放入自身的任务队列中，当执行栈中的任务处理完之后会读取各线程中任务队列中的事件。<br/>
+&emsp;&emsp;前面是从同步异步的角度来划分任务的，从执行顺序来说，任务也分为两种：macrotask（宏任务）、microtask（微任务）。异步的 macrotask 执行完之后返回的事件会放在各线程的任务队列中，microtask 执行完之后返回的事件会放在微任务队列中。<br/>
+> macrotask包括：script（JS文件）、MessageChannel、setTimeout、setInterval、setImmediate、I/O、ajax、eventListener、UI rendering。<br/>
 > microtask包括：Promise、MutationObserver、已废弃的Object.observe()、Node中的process.nextTick<br/>
 
 &emsp;&emsp;其中需要注意的是**GUI 渲染线程**去渲染页面也是以 macrotask 的形式进行的，这个之后详谈。<br/>
-![Event Loop](../image/vue/nextTick_1.png)
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-
-
-
-
-
-
-
-&emsp;&emsp;Javascript 任务分为**同步任务**和**异步任务**，同步任务是指调用之后立刻得到结果的任务；异步任务是指调用之后无法立刻得到结果，需要进行额外操作的任务。<br/>
-1、JS 引擎线程会顺序执行**执行栈**中任务，当执行栈中的有异步任务时，会将该任务交给对应的线程处理。当这些线程处理完任务之后，会在各自的任务队列中放置对应任务。<br/>
-2、当JS 引擎线程**执行栈**中的任务执行完毕，开始检查渲染，然后 GUI 渲染线程接管渲染。<br/>
-3、渲染完毕后，JS 引擎线程继续接管，读取各任务队列的任务，添加到执行栈中开始执行。<br/>
-4、
-&emsp;&emsp;主线程按照1、2、3的顺序不断重复执行，一个这样的循环过程称为一个 tick。这就是 JS 执行环境运行机制：事件循环（Event Loop）。<br/>
-### 3、macrotask 与 microtask
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+![Event Loop](../image/vue/nextTick_1.jpg)
+&emsp;&emsp;JS 执行环境运行机制——Event Loop（事件循环）的过程如上图所示：<br/>
+1、**JS 引擎线程**顺序执行**执行栈**中的任务，以一个 macrotask 为单位，在单个宏任务没有处理完之前，**JS 引擎线程**不会将程序交由**GUI 渲染线程**接管。也就是说耗时的任务会阻塞渲染，导致页面卡顿的情况发生。典型浏览器一般1秒钟插入60个渲染帧，也就是说16ms进行一次渲染，单个任务超过16ms，如果渲染树发生改变将得不到及时更新渲染。<br/>
+&emsp;&emsp;流畅的页面中一般任务执行情况如下所示：<br/>
+![](../image/vue/nextTick_2.jpg)
+&emsp;&emsp;单个任务耗时较多，则会发生丢帧的情况：<br/>
+![](../image/vue/nextTick_3.jpg)
+2、**JS 引擎线程**在执行 macrotask 时，会将遇到的异步任务交给指定的线程处理。当异步任务为 macrotask 时，对应线程处理完毕之后**放入线程自身的任务队列中**；若异步任务为 microtask 时，对应线程处理完毕之后**放入微任务队列中**。macrotask 执行完之后会遍历微任务队列中的任务加以执行，清空微任务队列。<br/>
+3、当**执行栈**中的任务执行完毕后，会读取各个线程中的任务队列，将各任务队列中的事件添加到**执行栈**中开始执行。从读取各任务队列中的事件放入**执行栈**中到清空微任务队列的过程称为一个“tick”。JS引擎线程会循环不断地读取任务、处理任务，这个就称为**Event Loop**（事件循环）机制。<br/>
 ## 二、Vue中nextTick的实现
-&emsp;&emsp;这两个 API 在源码中的实现是调用同一个方法 nextTick()，Vue2.5 版本将该方法单独写在一个 js 文件中，并更改了其实现方式。在具体了解 nextTick() 实现之前有必要阐述一下 javaScript 执行环境的运行机制。<br/>
+&emsp;&emsp;？？？需要异步更新队列，Vue是数据驱动的框架，最好的情况是在页面重新渲染前完成数据的更新。从前面的讲述中可以知道，首先执行 macrotask，然后执行 microtask ，清空微任务队列后，再从各线程的任务队列中读取新的事件之前，GUI 渲染线程有可能接管程序，完成页面重新渲染。<br/>
 ### 1、使用 MutationObserver 实现的版本
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>

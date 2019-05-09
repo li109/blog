@@ -73,7 +73,8 @@ exit $ret
 &emsp;&emsp;1、引入 import-local 包，优先使用本地 webpack-cli，其次使用全局安装的包。<br/>
 &emsp;&emsp;2、引入 v8-compile-cache 包，使用v8引擎的代码缓存来加快实例化时间。<br/>
 &emsp;&emsp;3、添加命令行提示信息。<br/>
-&emsp;&emsp;4、可以通过命令 config 指定 webpack 的配置文件；如果不输入，则默认配置文件为webpack.config.js；如果未通过 config 命令配置文件且 webpack.config.js 文件不存在，则使用默认配置。<br/>
+<!-- &emsp;&emsp;4、可以通过命令 config 指定 webpack 的配置文件；如果不输入，则默认配置文件为webpack.config.js；如果未通过 config 命令配置文件且 webpack.config.js 文件不存在，则使用默认配置。<br/> -->
+&emsp;&emsp;4、可以通过命令 config 指定 webpack 的配置文件；如果不输入，则默认配置文件为webpack.config.js；如果未通过 config 命令配置文件且 webpack.config.js 不存在，则 options 对象只有 context 属性，存储项目路径。<br/>
 options = require("./utils/convert-argv")(argv);<br/>
 &emsp;&emsp;然后根据配置信息生成 options 选项，options 对象中包含 上下文环境、输入文件、输出文件等信息。<br/>
 compiler = webpack(options);<br/>
