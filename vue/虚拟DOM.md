@@ -1,5 +1,6 @@
 # Vue2.0源码阅读笔记（六）：Virtual DOM
 &emsp;&emsp;<br/>
+&emsp;&emsp;使用 Virtual DOM 的原因主要有两点：1、采取分层设计的思想，抽象渲染过程，使框架可以渲染到多个平台；2、比直接操作原生 DOM 性能更好。<br/>
 ## 一、挂载实例
 &emsp;&emsp;*/src/core/instance/init.js*<br/>
 ```js
@@ -25,7 +26,7 @@ Vue.prototype.$mount = function (el,hydrating) {
   return mount.call(this, el, hydrating)
 }
 ```
-&emsp;&emsp;可以看到，完整版的 *$mount* 最终也是调用只包含运行时版本定义的 *$mount* 方法，只是在调用前将模板字符串编译渲染函数和静态根节点渲染函数而已。最终的 *$mount* 方法主要功能就是调用 *mountComponent* 方法，该方法定义在 */src/core/instance/lifecycle.js* 文件中。<br/>
+&emsp;&emsp;可以看到，完整版最终也是调用只包含运行时版本定义的 *$mount* 方法，只是在调用前将模板字符串编译渲染函数和静态根节点渲染函数而已。该方法主要功能就是调用 *mountComponent* 方法，*mountComponent* 定义在 */src/core/instance/lifecycle.js* 文件中。<br/>
 ```js
 function mountComponent (vm,el,hydrating) {
   vm.$el = el
@@ -63,65 +64,423 @@ updateComponent = () => {
 ## 二、生成虚拟DOM
 &emsp;&emsp;*_render* 方法根据渲染函数生成虚拟DOM，该方法定义在 *src/core/instance/render.js* 文件中。<br/>
 ```js
-Vue.prototype._render = function (): VNode {
-  const vm: Component = this
+Vue.prototype._render = function () {
+  const vm = this
   const { render, _parentVnode } = vm.$options
-
-  if (_parentVnode) {
-    vm.$scopedSlots = normalizeScopedSlots(
-    _parentVnode.data.scopedSlots,
-    vm.$slots,
-    vm.$scopedSlots
-    )
-  
-
-  // set parent vnode. this allows render functions to have access
-  // to the data on the placeholder node.
-  vm.$vnode = _parentVnode
-  // render self
+  /* 省略一些代码 */
   let vnode
   try {
-    // There's no need to maintain a stack because all render fns are called
-    // separately from one another. Nested component's render fns are called
-    // when parent component is patched.
     currentRenderingInstance = vm
     vnode = render.call(vm._renderProxy, vm.$createElement)
   } catch (e) {
-    handleError(e, vm, `render`)
-    // return error render result,
-    // or previous vnode to prevent render error causing blank component
-    /* istanbul ignore else */
-    if (process.env.NODE_ENV !== 'production' && vm.$options.renderError) {
-      try {
-        vnode = vm.$options.renderError.call(vm._renderProxy, vm.$createElement, e)
-      } catch (e) {
-        handleError(e, vm, `renderError`)
-        vnode = vm._vnode
-      }
-    } else {
-      vnode = vm._vnode
-    }
+    /* 省略异常处理代码 */
   } finally {
     currentRenderingInstance = null
   }
-  // if the returned array contains only a single node, allow it
-  if (Array.isArray(vnode) && vnode.length === 1) {
-    vnode = vnode[0]
+  /* 省略一些代码 */
+  return vnode
+}
+```
+&emsp;&emsp;*_render* 方法的核心代码为：<br/>
+```js
+vnode = render.call(vm._renderProxy, vm.$createElement)
+```
+&emsp;&emsp;在用户手写渲染函数时，会使用传入的 *vm.$createElement* 函数。而根据上一篇文章 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，由模板编译而成的渲染函数是包裹在 *_c()* 函数中的。实际上*vm.$createElement* 与 *_c()* 都是对 *createElement* 函数的调用。在 *src/core/instance/render.js* 文件的 *initRender* 函数中有如下代码：<br/>
+```js
+vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false)
+vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
+```
+&emsp;&emsp;在具体讲解生成虚拟DOM节点 VNode 的 *createElement*函数 之前，先看一下 VNode 对象的格式与分类。<br/>
+### 1、VNode
+&emsp;&emsp;VNode 分为四种：组件类型、标签元素类型、注释类型、文本类型。还有一种克隆类型节点，是对这四种类型的复制，唯一的区别在于其 *isCloned* 属性为 *true*。关于组件类型的渲染会在下一篇文章《组件化》中详细介绍，本文会省略掉这一部分。<br/>
+&emsp;&emsp;VNode 在 */src/core/vdom/vnode.js* 文件中定义。<br/>
+```js
+export default class VNode {
+  constructor (tag,data,children,text,elm,context,componentOptions,asyncFactory) {
+    this.tag = tag // 标签名
+    this.data = data // 标签属性对象
+    this.children = children // 子VNode数组
+    this.text = text // 注释或文本节点的值
+    this.elm = elm // 对真实DOM的引用
+    this.ns = undefined // 命名空间
+    this.context = context // 执行上下文
+    this.fnContext = undefined
+    this.fnOptions = undefined
+    this.fnScopeId = undefined
+    this.key = data && data.key // 节点key值，在diff算法中用于优化
+    this.componentOptions = componentOptions
+    this.componentInstance = undefined
+    this.parent = undefined // 父节点
+    this.raw = false // 是否为原始html
+    this.isStatic = false // 是否为静态节点
+    this.isRootInsert = true // 是否作为根节点插入
+    this.isComment = false // 是否为注释节点
+    this.isCloned = false // 是否为克隆节点
+    this.isOnce = false // 是否使用了v-once指令
+    this.asyncFactory = asyncFactory
+    this.asyncMeta = undefined
+    this.isAsyncPlaceholder = false
   }
-  // return empty vnode in case the render function errored out
-  if (!(vnode instanceof VNode)) {
-    if (process.env.NODE_ENV !== 'production' && Array.isArray(vnode)) {
-      warn(
-          'Multiple root nodes returned from render function. Render function ' +
-          'should return a single root node.',
-          vm
+
+  get child () {
+    return this.componentInstance
+  }
+}
+```
+&emsp;&emsp;VNode 的对象上属性很多，各属性的作用可参看注释所说，这里说一下各种类型 VNode 对象的必要属性。<br/>
+```js
+/* 注释类型 */
+emptyVNode = {
+  tag: undefined,
+  data: undefined,
+  children: undefined,
+  text: "注释内容",
+  isComment: true
+}
+/* 文本类型 */
+textVNode = {
+  tag: undefined,
+  data: undefined,
+  children: undefined,
+  text: "文本内容",
+  isComment: false
+}
+/* 标签类型 */
+tagVNode = {
+  tag: "标签名",
+  data: {/* 包含标签属性的对象 */},
+  children: [/* 存放子 VNode 的数组 */]
+}
+```
+### 2、createElement
+&emsp;&emsp;*createElement* 函数定义在 */src/core/vdom/create-element.js* 文件中。<br/>
+```js
+function createElement (context,tag,data,children,normalizationType,alwaysNormalize) {
+  if (Array.isArray(data) || isPrimitive(data)) {
+    normalizationType = children
+    children = data
+    data = undefined
+  }
+  if (isTrue(alwaysNormalize)) {
+    normalizationType = ALWAYS_NORMALIZE
+  }
+  return _createElement(context, tag, data, children, normalizationType)
+}
+```
+&emsp;&emsp;*createElement* 在参数处理后调用 *_createElement*函数，*_createElement* 代码如下：<br/>
+```js
+function _createElement (context,tag,data,children,normalizationType) {
+  /* 省略一些代码 */
+  if (normalizationType === ALWAYS_NORMALIZE) {
+    children = normalizeChildren(children)
+  } else if (normalizationType === SIMPLE_NORMALIZE) {
+    children = simpleNormalizeChildren(children)
+  }
+  let vnode, ns
+  if (typeof tag === 'string') {
+    let Ctor
+    ns = (context.$vnode && context.$vnode.ns) || config.getTagNamespace(tag)
+    if (config.isReservedTag(tag)) {
+      if (process.env.NODE_ENV !== 'production' && isDef(data) && isDef(data.nativeOn)) {
+        warn(
+          `The .native modifier for v-on is only valid on components but it was used on <${tag}>.`,
+          context
+        )
+      }
+      vnode = new VNode(config.parsePlatformTagName(tag), data, children,undefined, undefined, context)
+    } else if ((!data || !data.pre) && isDef(Ctor = resolveAsset(context.$options,'components', tag))) {
+      vnode = createComponent(Ctor, data, context, children, tag)
+    } else {
+      vnode = new VNode(tag, data, children,undefined, undefined, context)
+    }
+  } else {
+    vnode = createComponent(tag, data, context, children)
+  }
+  if (Array.isArray(vnode)) { return vnode}
+  else if (isDef(vnode)) {
+    if (isDef(ns)) applyNS(vnode, ns)
+    if (isDef(data)) registerDeepBindings(data)
+    return vnode
+  } else {
+    return createEmptyVNode()
+  }
+}
+```
+&emsp;&emsp;*_createElement*函数首先会做处理一些错误情况，比如属性对象是响应式的、存在不是基础类型的属性等。函数的核心功能有两点：<br/>
+>1、规范化 children 属性。<br/>
+>2、根据 tag 值的具体情况，生成对应的 VNode。<br/>
+
+&emsp;&emsp;*children* 规范化有以下三种情况：渲染函数 *render* 是经过编译产生的、用户手写 *render* 函数。<br/>
+>1、渲染函数 *render* 是经过编译产生的，调用 *simpleNormalizeChildren* 处理。<br/>
+>2、编译\<template\>、\<slot\>、v-for等产生嵌套数组时，调用 *normalizeChildren* 处理。<br/>
+>3、在用户手写渲染函数时，调用 *normalizeChildren* 处理。<br/>
+
+&emsp;&emsp;在渲染函数由编译生成的时，*simpleNormalizeChildren* 函数主要是处理函数式组件返回的是一个数组而不是根节点的情况，处理方式是将 *children* 调整为只有一层深度的数组。<br/>
+```js
+function simpleNormalizeChildren (children) {
+  for (let i = 0; i < children.length; i++) {
+    if (Array.isArray(children[i])) {
+      return Array.prototype.concat.apply([], children)
+    }
+  }
+  return children
+}
+```
+&emsp;&emsp;*normalizeChildren* 函数在用户输入基本类型时，会将其转变成文本类型VNode。存在嵌套数组时，会调用 *normalizeArrayChildren* 函数。该函数会递归处理嵌套节点，最终生成VNode类型的数组。<br/>
+```js
+function normalizeChildren (children) {
+  return isPrimitive(children)
+    ? [createTextVNode(children)]
+    : Array.isArray(children)
+      ? normalizeArrayChildren(children)
+      : undefined
+}
+```
+&emsp;&emsp;在根据 *tag* 值生成对应的 VNode 的过程中，首先判断 *tag* 是否为字符串，若不是字符串，则调用 *createComponent* 函数生成组件 VNode。<br/>
+&emsp;&emsp;*tag* 值是字符串又分为三种情况：<br/>
+>1、如果是保留标签，首先在事件修饰符.native使用到非组件上时发出警告，然后生成标签VNode。<br/>
+>2、如果是已经注册的标签名，则调用 *createComponent* 函数生成组件 VNode。<br/>
+>3、如果标签未知，直接生成一个标签 VNode。<br/>
+### 3、其它渲染帮助函数
+&emsp;&emsp;由 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，模板编译之后的渲染函数中除了 *_C()* 之外还有一些内部函数。各种帮助渲染的内部函数如下所示：<br/>
+```js
+function installRenderHelpers (target) {
+  target._o = markOnce
+  target._n = toNumber
+  target._s = toString
+  target._l = renderList
+  target._t = renderSlot
+  target._q = looseEqual
+  target._i = looseIndexOf
+  target._m = renderStatic
+  target._f = resolveFilter
+  target._k = checkKeyCodes
+  target._b = bindObjectProps
+  target._v = createTextVNode
+  target._e = createEmptyVNode
+  target._u = resolveScopedSlots
+  target._g = bindObjectListeners
+  target._d = bindDynamicKeys
+  target._p = prependModifier
+}
+```
+&emsp;&emsp;依旧使用 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 中使用的例子，模板字符串如下所示：<br/>
+```html
+  <div id="app" class="home" @click="showTitle">
+    <div class="title">标题：{{title}}。</div>
+    <div class="content">
+      <span>456</span>
+    </div>
+  </div>
+```
+&emsp;&emsp;经过编译后生成的渲染函数以及静态根节点渲染函数数组如下所示：<br/>
+```js
+// 渲染函数
+render = function() {
+  with(this){
+    return _c(
+      'div',
+      {
+        staticClass:"home",
+        attrs:{"id":"app"},
+        on:{"click":showTitle}
+      },
+      [
+        _c(
+          'div',
+          {staticClass:"title"},
+          [_v("标题："+_s(title)+"。")]
+        ),
+        _v(" "),
+        _m(0)
+      ]
+    )
+  }
+}
+
+// 静态根节点渲染函数数组
+staticRenderFns: [
+  function() {
+    with(this){
+      return _c(
+        'div',
+        {staticClass:"content"},
+        [
+          _c(
+            'span',
+            [
+              _v("456")
+            ]
+          )
+        ]
       )
     }
-    vnode = createEmptyVNode()
   }
-  // set parent
-  vnode.parent = _parentVnode
-  return vnode
+]
+```
+&emsp;&emsp;先讲解这里遇到的几个常规的内部函数：*_s()*、*_v()*、*_m()*，其余的比如循环列表的帮助渲染函数 *_l()* 等在讲解具体指令时详细阐述。<br/>
+&emsp;&emsp;*_s()* 的作用是读取变量的字符串形式。如果变量为空，则返回空字符串；变量如果是数组或者纯对象，则调用 *JSON.stringify()* 方法处理；否则直接使用 *String()* 进行处理。<br/>
+```js
+export function toString (val) {
+  return val == null
+    ? ''
+    : Array.isArray(val) || (isPlainObject(val) && val.toString === _toString)
+      ? JSON.stringify(val, null, 2)
+      : String(val)
+}
+```
+&emsp;&emsp;*_v()* 的作用是创建文本类型VNode，该VNode的 *text* 属性为 *_v()* 参数的字符串形式。<br/>
+```js
+function createTextVNode (val) {
+  return new VNode(undefined, undefined, undefined, String(val))
+}
+```
+&emsp;&emsp;*_m()* 的作用是处理静态根节点，可以看到在渲染函数 *render* 中并不包含静态根节点的渲染函数，而是在对应位置放置 *_m()* 函数。*_m()* 的第一个参数是当前静态根节点渲染函数在 *staticRenderFns* 数组中的下标。<br/>
+```js
+function renderStatic (index,isInFor) {
+  const cached = this._staticTrees || (this._staticTrees = [])
+  let tree = cached[index]
+  if (tree && !isInFor) { return tree }
+  tree = cached[index] = this.$options.staticRenderFns[index].call(
+    this._renderProxy, null, this
+  )
+  markStatic(tree, `__static__${index}`, false)
+  return tree
+}
+```
+&emsp;&emsp;*renderStatic* 函数的主要是一个缓存的功能，静态根节点渲染函数只需要渲染一次，然后存储到变量 *cached* 中，下次使用直接读取即可。静态根节点生成的VNode 的 *isStatic* 属性值为 *true*，*key* 属性值为 *__static__* 与 下标拼接的字符串。<br/>
+## 三、生成真实DOM
+&emsp;&emsp;*_update* 函数在初始渲染时根据虚拟DOM生成真实DOM、在数据改变时根据虚拟DOM调整真实DOM，该方法定义在 */src/core/instance/lifecycle.js* 文件中。<br/>
+```js
+Vue.prototype._update = function (vnode, hydrating) {
+    const vm = this
+    const prevEl = vm.$el
+    const prevVnode = vm._vnode
+    const restoreActiveInstance = setActiveInstance(vm)
+    vm._vnode = vnode
+    if (!prevVnode) {
+      vm.$el = vm.__patch__(vm.$el, vnode, hydrating, false)
+    } else {
+      vm.$el = vm.__patch__(prevVnode, vnode)
+    }
+    restoreActiveInstance()
+    if (prevEl) { prevEl.__vue__ = null }
+    if (vm.$el) { vm.$el.__vue__ = vm }
+    if (vm.$vnode && vm.$parent && vm.$vnode === vm.$parent._vnode) {
+      vm.$parent.$el = vm.$el
+    }
+  }
+```
+&emsp;&emsp;*_update* 方法的核心是对 *__patch__* 方法的调用，该方法在不同平台下的实现不同，在服务器端由于没有DOM，该方法为空。在web平台下，该方法在 */src/platforms/web/runtime/patch.js* 中定义。<br/>
+```js
+export const patch = createPatchFunction({ nodeOps, modules })
+```
+&emsp;&emsp;可以看到 *patch* 方法是向 *createPatchFunction* 中传入配置参数生成的。*createPatchFunction* 在 */src/core/vdom/patch.js* 中定义，返回值即为真正的 *patch* 方法。<br/>
+```js
+function patch (oldVnode, vnode, hydrating, removeOnly) {
+  if (isUndef(vnode)) {
+    if (isDef(oldVnode)) invokeDestroyHook(oldVnode)
+    return
+  }
+
+  let isInitialPatch = false
+  const insertedVnodeQueue = []
+
+  if (isUndef(oldVnode)) {
+    // empty mount (likely as component), create new root element
+    isInitialPatch = true
+    createElm(vnode, insertedVnodeQueue)
+  } else {
+    const isRealElement = isDef(oldVnode.nodeType)
+    if (!isRealElement && sameVnode(oldVnode, vnode)) {
+      // patch existing root node
+      patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
+    } else {
+      if (isRealElement) {
+        if (oldVnode.nodeType === 1 && oldVnode.hasAttribute(SSR_ATTR)) {
+          oldVnode.removeAttribute(SSR_ATTR)
+          hydrating = true
+        }
+        if (isTrue(hydrating)) {
+          if (hydrate(oldVnode, vnode, insertedVnodeQueue)) {
+            invokeInsertHook(vnode, insertedVnodeQueue, true)
+            return oldVnode
+          } else if (process.env.NODE_ENV !== 'production') {
+            warn(
+              'The client-side rendered virtual DOM tree is not matching ' +
+              'server-rendered content. This is likely caused by incorrect ' +
+              'HTML markup, for example nesting block-level elements inside ' +
+              '<p>, or missing <tbody>. Bailing hydration and performing ' +
+              'full client-side render.'
+            )
+          }
+        }
+        oldVnode = emptyNodeAt(oldVnode)
+      }
+
+      // replacing existing element
+      const oldElm = oldVnode.elm
+      const parentElm = nodeOps.parentNode(oldElm)
+
+      // create new node
+      createElm(
+        vnode,
+        insertedVnodeQueue,
+        oldElm._leaveCb ? null : parentElm,
+        nodeOps.nextSibling(oldElm)
+      )
+
+      if (isDef(vnode.parent)) {
+        let ancestor = vnode.parent
+        const patchable = isPatchable(vnode)
+        while (ancestor) {
+          for (let i = 0; i < cbs.destroy.length; ++i) {
+            cbs.destroy[i](ancestor)
+          }
+          ancestor.elm = vnode.elm
+          if (patchable) {
+            for (let i = 0; i < cbs.create.length; ++i) {
+              cbs.create[i](emptyNode, ancestor)
+            }
+            const insert = ancestor.data.hook.insert
+            if (insert.merged) {
+              for (let i = 1; i < insert.fns.length; i++) {
+                insert.fns[i]()
+              }
+            }
+          } else {
+            registerRef(ancestor)
+          }
+          ancestor = ancestor.parent
+        }
+      }
+      if (isDef(parentElm)) {
+        removeVnodes([oldVnode], 0, 0)
+      } else if (isDef(oldVnode.tag)) {
+        invokeDestroyHook(oldVnode)
+      }
+    }
+  }
+
+  invokeInsertHook(vnode, insertedVnodeQueue, isInitialPatch)
+  return vnode.elm
+  }
+```
+&emsp;&emsp;在初次挂载时第一个参数 *oldVnode* 的值是一个真实的DOM对象，Vue原型上的 *$mount* 方法中有如下代码：<br/>
+```js
+el = el ? query(el) : undefined;
+```
+&emsp;&emsp;*query* 函数根据 *el* 查找DOM元素，如果不存在则创建一个新的 *div* 元素，代码如下所示：<br/>
+```js
+function query (el) {
+  if (typeof el === 'string') {
+    var selected = document.querySelector(el);
+    if (!selected) {
+      warn('Cannot find element: ' + el);
+      return document.createElement('div')
+    }
+    return selected
+  } else { return el }
 }
 ```
 &emsp;&emsp;<br/>
@@ -129,8 +488,6 @@ Vue.prototype._render = function (): VNode {
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-## 三、生成真实DOM
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 ## 四、diff算法
