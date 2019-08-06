@@ -85,12 +85,12 @@ Vue.prototype._render = function () {
 ```js
 vnode = render.call(vm._renderProxy, vm.$createElement)
 ```
-&emsp;&emsp;在用户手写渲染函数时，会使用传入的 *vm.$createElement* 函数。而根据上一篇文章 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，由模板编译而成的渲染函数是包裹在 *_c()* 函数中的。实际上*vm.$createElement* 与 *_c()* 都是对 *createElement* 函数的调用。在 *src/core/instance/render.js* 文件的 *initRender* 函数中有如下代码：<br/>
+&emsp;&emsp;在用户手写渲染函数时，会使用传入的 *vm.\$createElement* 函数。而根据上一篇文章 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，由模板编译而成的渲染函数是包裹在 *_c()* 函数中的。实际上*vm.\$createElement* 与 *_c()* 都是对 *createElement* 函数的调用。在 *src/core/instance/render.js* 文件的 *initRender* 函数中有如下代码：<br/>
 ```js
 vm._c = (a, b, c, d) => createElement(vm, a, b, c, d, false)
 vm.$createElement = (a, b, c, d) => createElement(vm, a, b, c, d, true)
 ```
-&emsp;&emsp;在具体讲解生成虚拟DOM节点 VNode 的 *createElement*函数 之前，先看一下 VNode 对象的格式与分类。<br/>
+&emsp;&emsp;在具体讲解生成虚拟DOM节点 VNode 的 *createElement*函数之前，先看一下 VNode 对象的格式与分类。<br/>
 ### 1、VNode
 &emsp;&emsp;VNode 分为四种：组件类型、标签元素类型、注释类型、文本类型。还有一种克隆类型节点，是对这四种类型的复制，唯一的区别在于其 *isCloned* 属性为 *true*。关于组件类型的渲染会在下一篇文章《组件化》中详细介绍，本文会省略掉这一部分。<br/>
 &emsp;&emsp;VNode 在 */src/core/vdom/vnode.js* 文件中定义。<br/>
@@ -210,7 +210,7 @@ function _createElement (context,tag,data,children,normalizationType) {
 >1、规范化 children 属性。<br/>
 >2、根据 tag 值的具体情况，生成对应的 VNode。<br/>
 
-&emsp;&emsp;*children* 规范化有以下三种情况：渲染函数 *render* 是经过编译产生的、用户手写 *render* 函数。<br/>
+&emsp;&emsp;*children* 规范化有以下三种情况：<br/>
 >1、渲染函数 *render* 是经过编译产生的，调用 *simpleNormalizeChildren* 处理。<br/>
 >2、编译\<template\>、\<slot\>、v-for等产生嵌套数组时，调用 *normalizeChildren* 处理。<br/>
 >3、在用户手写渲染函数时，调用 *normalizeChildren* 处理。<br/>
@@ -264,7 +264,7 @@ function installRenderHelpers (target) {
   target._p = prependModifier
 }
 ```
-&emsp;&emsp;依旧使用 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 中使用的例子，模板字符串如下所示：<br/>
+&emsp;&emsp;依旧使用 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 中的例子，模板字符串如下所示：<br/>
 ```html
   <div id="app" class="home" @click="showTitle">
     <div class="title">标题：{{title}}。</div>
@@ -348,9 +348,11 @@ function renderStatic (index,isInFor) {
   return tree
 }
 ```
-&emsp;&emsp;*renderStatic* 函数的主要是一个缓存的功能，静态根节点渲染函数只需要渲染一次，然后存储到变量 *cached* 中，下次使用直接读取即可。静态根节点生成的VNode 的 *isStatic* 属性值为 *true*，*key* 属性值为 *__static__* 与 下标拼接的字符串。<br/>
+&emsp;&emsp;*renderStatic* 函数的主要是一个缓存的功能，静态根节点渲染函数只需要渲染一次，然后存储到变量 *cached* 中，下次使用直接读取即可。静态根节点生成的VNode 的 *isStatic* 属性值为 *true*，*key* 属性值为 *\_\_static\_\_* 与 下标拼接的字符串。<br/>
 ## 三、生成真实DOM
-&emsp;&emsp;*_update* 函数在初始渲染时根据虚拟DOM生成真实DOM、在数据改变时根据虚拟DOM调整真实DOM，该方法定义在 */src/core/instance/lifecycle.js* 文件中。<br/>
+&emsp;&emsp;*_update* 函数在初始渲染时根据虚拟DOM生成真实DOM、在数据改变时根据虚拟DOM调整真实DOM。<br/>
+### 1、_update函数
+&emsp;&emsp;*_update* 函数定义在 */src/core/instance/lifecycle.js* 文件中，代码如下所示：<br/>
 ```js
 Vue.prototype._update = function (vnode, hydrating) {
     const vm = this
@@ -371,102 +373,12 @@ Vue.prototype._update = function (vnode, hydrating) {
     }
   }
 ```
-&emsp;&emsp;*_update* 方法的核心是对 *__patch__* 方法的调用，该方法在不同平台下的实现不同，在服务器端由于没有DOM，该方法为空。在web平台下，该方法在 */src/platforms/web/runtime/patch.js* 中定义。<br/>
+&emsp;&emsp;*_update* 方法的核心是对 *\_\_patch\_\_* 方法的调用，该方法在不同平台下的实现不同，在服务器端由于没有DOM，该方法为空。在web平台下，该方法在 */src/platforms/web/runtime/patch.js* 中定义。<br/>
 ```js
 export const patch = createPatchFunction({ nodeOps, modules })
 ```
 &emsp;&emsp;可以看到 *patch* 方法是向 *createPatchFunction* 中传入配置参数生成的。*createPatchFunction* 在 */src/core/vdom/patch.js* 中定义，返回值即为真正的 *patch* 方法。<br/>
-```js
-function patch (oldVnode, vnode, hydrating, removeOnly) {
-  if (isUndef(vnode)) {
-    if (isDef(oldVnode)) invokeDestroyHook(oldVnode)
-    return
-  }
-
-  let isInitialPatch = false
-  const insertedVnodeQueue = []
-
-  if (isUndef(oldVnode)) {
-    // empty mount (likely as component), create new root element
-    isInitialPatch = true
-    createElm(vnode, insertedVnodeQueue)
-  } else {
-    const isRealElement = isDef(oldVnode.nodeType)
-    if (!isRealElement && sameVnode(oldVnode, vnode)) {
-      // patch existing root node
-      patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
-    } else {
-      if (isRealElement) {
-        if (oldVnode.nodeType === 1 && oldVnode.hasAttribute(SSR_ATTR)) {
-          oldVnode.removeAttribute(SSR_ATTR)
-          hydrating = true
-        }
-        if (isTrue(hydrating)) {
-          if (hydrate(oldVnode, vnode, insertedVnodeQueue)) {
-            invokeInsertHook(vnode, insertedVnodeQueue, true)
-            return oldVnode
-          } else if (process.env.NODE_ENV !== 'production') {
-            warn(
-              'The client-side rendered virtual DOM tree is not matching ' +
-              'server-rendered content. This is likely caused by incorrect ' +
-              'HTML markup, for example nesting block-level elements inside ' +
-              '<p>, or missing <tbody>. Bailing hydration and performing ' +
-              'full client-side render.'
-            )
-          }
-        }
-        oldVnode = emptyNodeAt(oldVnode)
-      }
-
-      // replacing existing element
-      const oldElm = oldVnode.elm
-      const parentElm = nodeOps.parentNode(oldElm)
-
-      // create new node
-      createElm(
-        vnode,
-        insertedVnodeQueue,
-        oldElm._leaveCb ? null : parentElm,
-        nodeOps.nextSibling(oldElm)
-      )
-
-      if (isDef(vnode.parent)) {
-        let ancestor = vnode.parent
-        const patchable = isPatchable(vnode)
-        while (ancestor) {
-          for (let i = 0; i < cbs.destroy.length; ++i) {
-            cbs.destroy[i](ancestor)
-          }
-          ancestor.elm = vnode.elm
-          if (patchable) {
-            for (let i = 0; i < cbs.create.length; ++i) {
-              cbs.create[i](emptyNode, ancestor)
-            }
-            const insert = ancestor.data.hook.insert
-            if (insert.merged) {
-              for (let i = 1; i < insert.fns.length; i++) {
-                insert.fns[i]()
-              }
-            }
-          } else {
-            registerRef(ancestor)
-          }
-          ancestor = ancestor.parent
-        }
-      }
-      if (isDef(parentElm)) {
-        removeVnodes([oldVnode], 0, 0)
-      } else if (isDef(oldVnode.tag)) {
-        invokeDestroyHook(oldVnode)
-      }
-    }
-  }
-
-  invokeInsertHook(vnode, insertedVnodeQueue, isInitialPatch)
-  return vnode.elm
-  }
-```
-&emsp;&emsp;在初次挂载时第一个参数 *oldVnode* 的值是一个真实的DOM对象，Vue原型上的 *$mount* 方法中有如下代码：<br/>
+&emsp;&emsp;另外，函数里使用的 *\$el* 都是真实的DOM，Vue原型上的 *\$mount* 方法中有如下代码：<br/>
 ```js
 el = el ? query(el) : undefined;
 ```
@@ -483,10 +395,78 @@ function query (el) {
   } else { return el }
 }
 ```
+### 2、patch函数
+&emsp;&emsp;*patch* 函数代码如下所示：<br/>
+```js
+function patch (oldVnode, vnode, hydrating, removeOnly) {
+  if (isUndef(vnode)) {
+    if (isDef(oldVnode)) invokeDestroyHook(oldVnode)
+    return
+  }
+  let isInitialPatch = false
+  const insertedVnodeQueue = []
+
+  if (isUndef(oldVnode)) {
+    isInitialPatch = true
+    createElm(vnode, insertedVnodeQueue)
+  } else {
+    const isRealElement = isDef(oldVnode.nodeType)
+    if (!isRealElement && sameVnode(oldVnode, vnode)) {
+      patchVnode(oldVnode, vnode, insertedVnodeQueue, null, null, removeOnly)
+    } else {
+      if (isRealElement) {
+        /* 省略与SSR有关的部分代码 */
+        oldVnode = emptyNodeAt(oldVnode)
+      }
+      const oldElm = oldVnode.elm
+      const parentElm = nodeOps.parentNode(oldElm)
+      createElm(vnode,insertedVnodeQueue,
+        oldElm._leaveCb ? null : parentElm,
+        nodeOps.nextSibling(oldElm)
+      )
+      /* 省略递归更新父占位符节点元素的代码 */
+      if (isDef(parentElm)) {
+        removeVnodes([oldVnode], 0, 0)
+      } else if (isDef(oldVnode.tag)) {
+        invokeDestroyHook(oldVnode)
+      }
+    }
+  }
+  invokeInsertHook(vnode, insertedVnodeQueue, isInitialPatch)
+  return vnode.elm
+}
+```
+&emsp;&emsp;函数逻辑如图所示：<br/>
+![patch](../image/vue/patch_1.png)
+&emsp;&emsp;首先逐个讲解 *patch* 中调用的函数，然后阐述整体逻辑。<br/>
+#### （一）、invokeDestroyHook
+&emsp;&emsp;<br/>
+```js
+function invokeDestroyHook (vnode) {
+  let i, j
+  const data = vnode.data
+  if (isDef(data)) {
+    if (isDef(i = data.hook) && isDef(i = i.destroy)) i(vnode)
+    for (i = 0; i < cbs.destroy.length; ++i) cbs.destroy[i](vnode)
+  }
+  if (isDef(i = vnode.children)) {
+    for (j = 0; j < vnode.children.length; ++j) {
+      invokeDestroyHook(vnode.children[j])
+    }
+  }
+}
+```
+&emsp;&emsp;<br/>
+#### （二）、createElm
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
+#### （三）、patchVnode
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
+#### （四）、removeVnodes
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+#### （五）、invokeInsertHook
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
