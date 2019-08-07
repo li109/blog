@@ -440,7 +440,7 @@ function patch (oldVnode, vnode, hydrating, removeOnly) {
 ![patch](../image/vue/patch_1.png)
 &emsp;&emsp;首先逐个讲解 *patch* 中调用的函数，然后阐述整体逻辑。<br/>
 #### （一）、invokeDestroyHook
-&emsp;&emsp;<br/>
+&emsp;&emsp;*invokeDestroyHook* 是在销毁节点之前调用的，代码如下：<br/>
 ```js
 function invokeDestroyHook (vnode) {
   let i, j
@@ -456,9 +456,137 @@ function invokeDestroyHook (vnode) {
   }
 }
 ```
-&emsp;&emsp;<br/>
+&emsp;&emsp;如果待销毁节点的 *vnode.data.hook.destroy* 方法存在，则调用该方法。否则循环调用 *cbs.destroy* 数组中的函数，该函数数组默认为：<br/>
+```js
+cbs.destroy = [
+  function destroy (vnode) {
+    registerRef(vnode, true);
+  },
+  function unbindDirectives (vnode) {
+    updateDirectives(vnode, emptyNode);
+  }
+]
+```
+&emsp;&emsp;函数 *registerRef* 在第二个参数为 *false* 时，功能是注册 *ref*，即将父组件的 *vm.$refs.ref* 的值指向子组件真实DOM，其中 *ref* 的值为 VNode data对象中的 *ref* 属性；在第二个参数为 *true* 时，表示解除 *vm.$refs.ref* 对子组件真实DOM的引用。第二种情况下的代码如下所示：<br/>
+```js
+function registerRef (vnode, isRemoval) {
+  var key = vnode.data.ref;
+  if (!isDef(key)) { return }
+  var vm = vnode.context;
+  var ref = vnode.componentInstance || vnode.elm;
+  var refs = vm.$refs;
+  if (isRemoval) {
+    if (Array.isArray(refs[key])) {
+      remove(refs[key], ref);
+    } else if (refs[key] === ref) {
+      refs[key] = undefined;
+    }
+  }/* 省略一些代码 */
+}
+```
+&emsp;&emsp;函数 *updateDirectives* 的功能是在DOM更新时触发自定义指令上的钩子函数。在与元素解绑时调用 *unbind* 钩子函数，相关代码如下：<br/>
+```js
+function updateDirectives (oldVnode, vnode) {
+  if (oldVnode.data.directives || vnode.data.directives) {
+    _update(oldVnode, vnode);
+  }
+}
+
+function _update (oldVnode, vnode) {
+  var isCreate = oldVnode === emptyNode;
+  var isDestroy = vnode === emptyNode;
+  var oldDirs = normalizeDirectives(oldVnode.data.directives, oldVnode.context);
+  var newDirs = normalizeDirectives(vnode.data.directives, vnode.context);
+  /* 省略一些代码 */
+  if (!isCreate) {
+    for (key in oldDirs) {
+      if (!newDirs[key]) {
+        callHook(oldDirs[key], 'unbind', oldVnode, oldVnode, isDestroy);
+      }
+    }
+  }
+}
+```
+&emsp;&emsp;如果该节点存在子节点，则各个子节点递归调用 *invokeDestroyHook* 函数处理。<br/>
+&emsp;&emsp;总之，invokeDestroyHook 函数的作用有以下三点：
+> 1、如果 *vnode.data.hook.destroy* 函数存在，则调用该函数。<br/>
+> 2、解除父组件 *$refs.ref* 对要删除真实节点的引用。<br/>
+> 3、自定义指令存在时，调用 *unbind* 钩子函数<br/>
 #### （二）、createElm
-&emsp;&emsp;<br/>
+&emsp;&emsp;*createElm* 函数主要作用是根据VNode创建真实DOM，并传入到正确的位置，代码如下：<br/>
+```js
+function createElm (vnode,insertedVnodeQueue,parentElm,refElm,nested,ownerArray,index) {
+  /* 省略一些代码 */
+  if (createComponent(vnode, insertedVnodeQueue, parentElm, refElm)) {
+    return
+  }
+
+  const data = vnode.data
+  const children = vnode.children
+  const tag = vnode.tag
+  if (isDef(tag)) {
+    /* 省略一些代码 */
+    vnode.elm = vnode.ns
+      ? nodeOps.createElementNS(vnode.ns, tag)
+      : nodeOps.createElement(tag, vnode)
+    setScope(vnode)
+
+    if (__WEEX__) {
+      /* 省略一些代码 */
+    } else {
+      createChildren(vnode, children, insertedVnodeQueue)
+      if (isDef(data)) {
+        invokeCreateHooks(vnode, insertedVnodeQueue)
+      }
+      insert(parentElm, vnode.elm, refElm)
+    }
+    /* 省略一些代码 */
+  } else if (isTrue(vnode.isComment)) {
+    vnode.elm = nodeOps.createComment(vnode.text)
+    insert(parentElm, vnode.elm, refElm)
+  } else {
+    vnode.elm = nodeOps.createTextNode(vnode.text)
+    insert(parentElm, vnode.elm, refElm)
+  }
+}
+```
+&emsp;&emsp;*createElm* 函数的基本逻辑如下：<br/>
+> 1、VNode是组件类型，调用 *createComponent* 函数处理。<br/>
+> 2、VNode是标签类型，ns属性若存在，调用 *createElementNS*，否则调用 *createElement* 处理。经过一系列处理后，调用 *insert* 将真实DOM插入正确位置。<br/>
+> 3、VNode是注释类型，调用 *createComment* 函数处理，然后调用 *insert* 将真实DOM插入正确位置。<br/>
+> 4、VNode是文本类型，调用 *createTextNode* 函数处理，然后调用 *insert* 将真实DOM插入正确位置。<br/>
+
+&emsp;&emsp;创建标签类型真实DOM若 *ns* 属性则调用 *createElementNS*函数，否则调用 *createElement* 函数进行处理。实质分别是对 *document.createElementNS* 与 *document.createElement* 方法的调用。<br/>
+```js
+function createElementNS (namespace, tagName) {
+  return document.createElementNS(namespaceMap[namespace], tagName)
+}
+
+function createElement (tagName, vnode) {
+  var elm = document.createElement(tagName);
+  if (tagName !== 'select') { return elm }
+  if (vnode.data && vnode.data.attrs && vnode.data.attrs.multiple !== undefined) {
+    elm.setAttribute('multiple', 'multiple');
+  }
+  return elm
+}
+```
+&emsp;&emsp;接着通过 *setScope* 函数设置作用域CSS的作用域id属性，这是作为一种特殊情况实现的，以避免通过常规属性 *patch* 过程的开销。<br/>
+&emsp;&emsp;然后调用 *createChildren* 函数创建该DOM的子节点， *createChildren* 在 *children* 属性为数组时，递归调用 *createElm* 方法创建真实节点。如果是一个基本类型，则使用 *text* 属性值创建一个文本类型的真实节点，并将其通过真实DOM上的 *appendChild* 方法作为子节点添加。<br/>
+```js
+function createChildren (vnode, children, insertedVnodeQueue) {
+  if (Array.isArray(children)) {
+    {
+      checkDuplicateKeys(children);
+    }
+    for (var i = 0; i < children.length; ++i) {
+      createElm(children[i], insertedVnodeQueue, vnode.elm, null, true, children, i);
+    }
+  } else if (isPrimitive(vnode.text)) {
+    nodeOps.appendChild(vnode.elm, nodeOps.createTextNode(String(vnode.text)));
+  }
+}
+```
 &emsp;&emsp;<br/>
 #### （三）、patchVnode
 &emsp;&emsp;<br/>
@@ -467,6 +595,10 @@ function invokeDestroyHook (vnode) {
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 #### （五）、invokeInsertHook
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+#### （六）、小结
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
