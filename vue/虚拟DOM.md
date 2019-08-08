@@ -1,8 +1,11 @@
 # Vue2.0源码阅读笔记（六）：Virtual DOM
-&emsp;&emsp;<br/>
-&emsp;&emsp;使用 Virtual DOM 的原因主要有两点：1、采取分层设计的思想，抽象渲染过程，使框架可以渲染到多个平台；2、比直接操作原生 DOM 性能更好。<br/>
-## 一、挂载实例
-&emsp;&emsp;*/src/core/instance/init.js*<br/>
+&emsp;&emsp;Vue2.0 与 Vue1.0最大的区别就是使用了 Virtual DOM 。使用虚拟DOM的好处主要有两点：<br/>
+> 1、采取分层设计的思想，抽象渲染过程，使框架可以渲染到多个平台。<br/>
+> 1、在复杂页面中，比直接操作原生 DOM 性能更好。<br/>
+
+&emsp;&emsp;在具体介绍虚拟DOM之前，先找到DOM挂载方法的位置与生成的过程。<br/>
+## 一、DOM挂载方法
+&emsp;&emsp;Vue的DOM挂载是在一系列初始化之后进行的，初始化方法 *\_init* 定义在 */src/core/instance/init.js* 中，在 *\_init* 方法最后调用挂载方法。<br/>
 ```js
 vm.$mount(vm.$options.el)
 ```
@@ -242,7 +245,7 @@ function normalizeChildren (children) {
 >2、如果是已经注册的标签名，则调用 *createComponent* 函数生成组件 VNode。<br/>
 >3、如果标签未知，直接生成一个标签 VNode。<br/>
 ### 3、其它渲染帮助函数
-&emsp;&emsp;由 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，模板编译之后的渲染函数中除了 *_C()* 之外还有一些内部函数。各种帮助渲染的内部函数如下所示：<br/>
+&emsp;&emsp;由 [《模板编译》](https://juejin.im/post/5d4135336fb9a06b160f094d) 可知，模板编译之后的渲染函数中除了 *_c()* 之外还有一些内部函数。各种帮助渲染的内部函数如下所示：<br/>
 ```js
 function installRenderHelpers (target) {
   target._o = markOnce
@@ -395,7 +398,196 @@ function query (el) {
   } else { return el }
 }
 ```
-### 2、patch函数
+### 2、createPatchFunction局部变量
+&emsp;&emsp;*createPatchFunction* 返回 *patch*，在 *patch* 中会闭包使用函数局部变量，因此在具体研究 *patch* 之前先分析这些局部变量。<br/>
+#### （一）、参数nodeOps
+&emsp;&emsp;*nodeOps* 对象的代码如下所示：<br/>
+```js
+nodeOps = {
+  // 将一个节点添加到指定父节点的子节点列表末尾。
+  appendChild：function(node, child) {
+    node.appendChild(child);
+  },
+  // 创建并返回一个注释节点。
+  createComment：function(text) {
+    return document.createComment(text)
+  },
+  // 创建由 tagName 指定的HTML元素
+  createElement：function(tagName, vnode) {
+    var elm = document.createElement(tagName);
+    if (tagName !== 'select') { return elm }
+    if (vnode.data && vnode.data.attrs && vnode.data.attrs.multiple !== undefined) {
+      elm.setAttribute('multiple', 'multiple');
+    }
+    return elm
+  },
+  // 创建一个具有指定的命名空间URI和限定名称的元素。
+  createElementNS：function(namespace, tagName) {
+    return document.createElementNS(namespaceMap[namespace], tagName)
+  },
+  // 创建一个新的文本节点。
+  createTextNode：function(text) {
+    return document.createTextNode(text)
+  },
+  // 在参考节点之前插入一个拥有指定父节点的子节点。
+  insertBefore：function(parentNode, newNode, referenceNode) {
+    parentNode.insertBefore(newNode, referenceNode);
+  },
+  // 返回其父节点的 childNodes 列表中紧跟在其后面的节点。
+  nextSibling：function(node) {
+    return node.nextSibling
+  },
+  // 返回指定的节点在DOM树中的父节点。
+  parentNode：function(node) {
+    return node.parentNode
+  },
+  // 从DOM中删除一个子节点，返回删除的节点。
+  removeChild：function(node, child) {
+    node.removeChild(child);
+  },
+  // 设置指定元素上的某个属性值。
+  setStyleScope：function(node, scopeId) {
+    node.setAttribute(scopeId, '');
+  },
+  // 设置一个节点及其后代的文本内容。
+  setTextContent：function(node, text) {
+    node.textContent = text;
+  },
+  // 返回元素的标签名称。
+  tagName：function(node) {
+    return node.tagName
+  }
+}
+```
+&emsp;&emsp;可以看出 *nodeOps* 对象上的函数属性都是对原生DOM操作的封装，Vue通过调用这些原生操作方法完成从虚拟DOM到真实DOM的过程。<br/>
+#### （二）、参数modules
+&emsp;&emsp;*modules* 对象数组代码如下所示：<br/>
+```js
+modules = [
+  {
+    create: function updateAttrs (oldVnode, vnode) {/*省略*/},
+    update: function updateAttrs (oldVnode, vnode) {/*省略*/}
+  },
+  {
+    create: function updateClass (oldVnode, vnode) {/*省略*/},
+    update: function updateClass (oldVnode, vnode) {/*省略*/}
+  },
+  {
+    create: function updateDOMListeners (oldVnode, vnode) {/*省略*/},
+    update: function updateDOMListeners (oldVnode, vnode) {/*省略*/}
+  },
+  {
+    create: function updateDOMProps (oldVnode, vnode) {/*省略*/},
+    update: function updateDOMProps (oldVnode, vnode) {/*省略*/}
+  },
+  {
+    create: function updateStyle (oldVnode, vnode) {/*省略*/},
+    update: function updateStyle (oldVnode, vnode) {/*省略*/}
+  },
+  {
+    activate: function _enter (_, vnode) {
+      if (vnode.data.show !== true) { enter(vnode);}
+    },
+    create: function _enter (_, vnode) {
+      if (vnode.data.show !== true) { enter(vnode); }
+    },
+    remove: function remove (vnode, rm) {
+      if (vnode.data.show !== true) {
+        leave(vnode, rm);
+      } else { rm(); }
+    }
+  },
+  {
+    create: function create (_, vnode) {
+      registerRef(vnode);
+    },
+    destroy: function destroy (vnode) {
+      registerRef(vnode, true);
+    },
+    update: function update (oldVnode, vnode) {
+      if (oldVnode.data.ref !== vnode.data.ref) {
+        registerRef(oldVnode, true);
+        registerRef(vnode);
+      }
+    }
+  },
+  {
+    create: function updateDirectives (oldVnode, vnode) {
+      if (oldVnode.data.directives || vnode.data.directives) {
+        _update(oldVnode, vnode);
+      }
+    },
+    destroy: function unbindDirectives (vnode) {
+      updateDirectives(vnode, emptyNode);
+    },
+    update: function updateDirectives (oldVnode, vnode) {
+      if (oldVnode.data.directives || vnode.data.directives) {
+        _update(oldVnode, vnode);
+      }
+    }
+  }
+]
+```
+&emsp;&emsp;*modules* 数组的每个元素代表处理一类的问题，下面分别介绍处理各个问题使用函数的作用：<br/>
+> 1、*updateAttrs* 函数的作用是对比新旧VNode的 *data.attrs* 属性，来更新真实DOM上的属性值。<br/>
+> 2、*updateClass* 函数的作用是更新真实DOM的 *class* 值。<br/>
+> 3、*updateDOMListeners* 函数的作用是对比新旧VNode的 *data.on* 属性，来更新真实DOM上绑定的事件。<br/>
+> 4、*updateDOMProps* 函数是更新一些特殊的属性：不能通过 *setAttribute* 设置，而是应该直接通过 DOM 元素设置的属性。比如：*value*、*checked*等。<br/>
+> 5、*updateStyle* 函数的作用是更新真实DOM的 *style* 值。<br/>
+> 6、数组第六个元素对象中的方法是与过渡相关的部分，后续文章会有一篇专门用来讲解过渡，这里先忽略。<br/>
+> 7、*registerRef* 函数在第二个参数为 *false* 时，功能是注册 *ref*，即将父组件的 *vm.$refs.ref* 的值指向子组件真实DOM，其中 *ref* 的值为 VNode的 *data.ref* 属性；在第二个参数为 *true* 时，表示解除 *vm.$refs.ref* 对子组件真实DOM的引用。<br/>
+> 8、*updateDirectives* 函数的作用是在DOM更新时触发自定义指令上的钩子函数。<br/>
+#### （三）、局部变量cbs
+&emsp;&emsp;局部变量 *cbs* 是 *modules* 的另外一种形式，*modules* 数组是按照处理问题的方面来分类的，*cbs* 是按照调用的时机来分类的。<br/>
+```js
+const hooks = ['create', 'activate', 'update', 'remove', 'destroy']
+const cbs = {}
+  for (i = 0; i < hooks.length; ++i) {
+    cbs[hooks[i]] = []
+    for (j = 0; j < modules.length; ++j) {
+      if (isDef(modules[j][hooks[i]])) {
+        cbs[hooks[i]].push(modules[j][hooks[i]])
+      }
+    }
+  }
+```
+&emsp;&emsp;经过转换后，*cbs* 对象如下所示：<br/>
+```js
+cbs = {
+  create: [
+    function updateAttrs (oldVnode, vnode) {/*省略具体代码*/},
+    function updateClass (oldVnode, vnode) {/*省略具体代码*/},
+    function updateDOMListeners (oldVnode, vnode) {/*省略具体代码*/},
+    function updateDOMProps (oldVnode, vnode) {/*省略具体代码*/},
+    function updateStyle (oldVnode, vnode) {/*省略具体代码*/},
+    function _enter (_, vnode) {/*省略具体代码*/},
+    function create (_, vnode) { registerRef(vnode); },
+    function updateDirectives (oldVnode, vnode) {/*省略具体代码*/}
+  ],
+  activate: [
+    function _enter (_, vnode) {/*省略具体代码*/}
+  ],
+  update: [
+    function updateAttrs (oldVnode, vnode) {/*省略具体代码*/},
+    function updateClass (oldVnode, vnode) {/*省略具体代码*/},
+    function updateDOMListeners (oldVnode, vnode) {/*省略具体代码*/},
+    function updateDOMProps (oldVnode, vnode) {/*省略具体代码*/},
+    function updateStyle (oldVnode, vnode) {/*省略具体代码*/},
+    function update (oldVnode, vnode) {/*省略具体代码*/}
+    function updateDirectives (oldVnode, vnode) {/*省略具体代码*/}
+  ],
+  remove: [
+    function remove (vnode, rm) {/*省略具体代码*/}
+  ],
+  destroy: [
+    function destroy (vnode) { registerRef(vnode, true); },
+    function unbindDirectives (vnode) {
+      updateDirectives(vnode, emptyNode);
+    }
+  ]
+}
+```
+### 3、patch函数
 &emsp;&emsp;*patch* 函数代码如下所示：<br/>
 ```js
 function patch (oldVnode, vnode, hydrating, removeOnly) {
@@ -438,7 +630,7 @@ function patch (oldVnode, vnode, hydrating, removeOnly) {
 ```
 &emsp;&emsp;函数逻辑如图所示：<br/>
 ![patch](../image/vue/patch_1.png)
-&emsp;&emsp;首先逐个讲解 *patch* 中调用的函数，然后阐述整体逻辑。<br/>
+&emsp;&emsp;首先讲解 *patch* 中几个比较重要的函数，然后阐述整体逻辑。<br/>
 #### （一）、invokeDestroyHook
 &emsp;&emsp;*invokeDestroyHook* 是在销毁节点之前调用的，代码如下：<br/>
 ```js
@@ -456,64 +648,14 @@ function invokeDestroyHook (vnode) {
   }
 }
 ```
-&emsp;&emsp;如果待销毁节点的 *vnode.data.hook.destroy* 方法存在，则调用该方法。否则循环调用 *cbs.destroy* 数组中的函数，该函数数组默认为：<br/>
-```js
-cbs.destroy = [
-  function destroy (vnode) {
-    registerRef(vnode, true);
-  },
-  function unbindDirectives (vnode) {
-    updateDirectives(vnode, emptyNode);
-  }
-]
-```
-&emsp;&emsp;函数 *registerRef* 在第二个参数为 *false* 时，功能是注册 *ref*，即将父组件的 *vm.$refs.ref* 的值指向子组件真实DOM，其中 *ref* 的值为 VNode data对象中的 *ref* 属性；在第二个参数为 *true* 时，表示解除 *vm.$refs.ref* 对子组件真实DOM的引用。第二种情况下的代码如下所示：<br/>
-```js
-function registerRef (vnode, isRemoval) {
-  var key = vnode.data.ref;
-  if (!isDef(key)) { return }
-  var vm = vnode.context;
-  var ref = vnode.componentInstance || vnode.elm;
-  var refs = vm.$refs;
-  if (isRemoval) {
-    if (Array.isArray(refs[key])) {
-      remove(refs[key], ref);
-    } else if (refs[key] === ref) {
-      refs[key] = undefined;
-    }
-  }/* 省略一些代码 */
-}
-```
-&emsp;&emsp;函数 *updateDirectives* 的功能是在DOM更新时触发自定义指令上的钩子函数。在与元素解绑时调用 *unbind* 钩子函数，相关代码如下：<br/>
-```js
-function updateDirectives (oldVnode, vnode) {
-  if (oldVnode.data.directives || vnode.data.directives) {
-    _update(oldVnode, vnode);
-  }
-}
-
-function _update (oldVnode, vnode) {
-  var isCreate = oldVnode === emptyNode;
-  var isDestroy = vnode === emptyNode;
-  var oldDirs = normalizeDirectives(oldVnode.data.directives, oldVnode.context);
-  var newDirs = normalizeDirectives(vnode.data.directives, vnode.context);
-  /* 省略一些代码 */
-  if (!isCreate) {
-    for (key in oldDirs) {
-      if (!newDirs[key]) {
-        callHook(oldDirs[key], 'unbind', oldVnode, oldVnode, isDestroy);
-      }
-    }
-  }
-}
-```
+&emsp;&emsp;如果待销毁节点的 *vnode.data.hook.destroy* 方法存在，则调用该方法。否则循环调用 *cbs.destroy* 数组中的函数，*cbs* 数组在上一节详细介绍过。<br/>
 &emsp;&emsp;如果该节点存在子节点，则各个子节点递归调用 *invokeDestroyHook* 函数处理。<br/>
 &emsp;&emsp;总之，invokeDestroyHook 函数的作用有以下三点：
 > 1、如果 *vnode.data.hook.destroy* 函数存在，则调用该函数。<br/>
 > 2、解除父组件 *$refs.ref* 对要删除真实节点的引用。<br/>
-> 3、自定义指令存在时，调用 *unbind* 钩子函数<br/>
+> 3、自定义指令存在时，调用 *unbind* 钩子函数。<br/>
 #### （二）、createElm
-&emsp;&emsp;*createElm* 函数主要作用是根据VNode创建真实DOM，并传入到正确的位置，代码如下：<br/>
+&emsp;&emsp;*createElm* 函数主要作用是根据VNode创建真实DOM，并插入到正确的位置，代码如下：<br/>
 ```js
 function createElm (vnode,insertedVnodeQueue,parentElm,refElm,nested,ownerArray,index) {
   /* 省略一些代码 */
@@ -556,22 +698,7 @@ function createElm (vnode,insertedVnodeQueue,parentElm,refElm,nested,ownerArray,
 > 3、VNode是注释类型，调用 *createComment* 函数处理，然后调用 *insert* 将真实DOM插入正确位置。<br/>
 > 4、VNode是文本类型，调用 *createTextNode* 函数处理，然后调用 *insert* 将真实DOM插入正确位置。<br/>
 
-&emsp;&emsp;创建标签类型真实DOM若 *ns* 属性则调用 *createElementNS*函数，否则调用 *createElement* 函数进行处理。实质分别是对 *document.createElementNS* 与 *document.createElement* 方法的调用。<br/>
-```js
-function createElementNS (namespace, tagName) {
-  return document.createElementNS(namespaceMap[namespace], tagName)
-}
-
-function createElement (tagName, vnode) {
-  var elm = document.createElement(tagName);
-  if (tagName !== 'select') { return elm }
-  if (vnode.data && vnode.data.attrs && vnode.data.attrs.multiple !== undefined) {
-    elm.setAttribute('multiple', 'multiple');
-  }
-  return elm
-}
-```
-&emsp;&emsp;接着通过 *setScope* 函数设置作用域CSS的作用域id属性，这是作为一种特殊情况实现的，以避免通过常规属性 *patch* 过程的开销。<br/>
+&emsp;&emsp;创建标签类型时首先创建标签元素，接着通过 *setScope* 函数设置作用域CSS的作用域id属性，这是作为一种特殊情况实现的，以避免通过常规属性 *patch* 过程的开销。<br/>
 &emsp;&emsp;然后调用 *createChildren* 函数创建该DOM的子节点， *createChildren* 在 *children* 属性为数组时，递归调用 *createElm* 方法创建真实节点。如果是一个基本类型，则使用 *text* 属性值创建一个文本类型的真实节点，并将其通过真实DOM上的 *appendChild* 方法作为子节点添加。<br/>
 ```js
 function createChildren (vnode, children, insertedVnodeQueue) {
@@ -587,22 +714,155 @@ function createChildren (vnode, children, insertedVnodeQueue) {
   }
 }
 ```
-&emsp;&emsp;<br/>
-#### （三）、patchVnode
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-#### （四）、removeVnodes
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-#### （五）、invokeInsertHook
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-#### （六）、小结
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+&emsp;&emsp;在创建标签元素子节点后，调用 *invokeCreateHooks* 函数来对 *create* 中各钩子函数完成调用，具体过程是通过循环调用 *cbs.create* 数组中的各个函数完成的。<br/>
+&emsp;&emsp;最后执行元素插入函数 *insert*，根据元素要插入位置的父节点和下一个兄弟节点来完成插入。<br/>
+```js
+function insert (parent, elm, ref) {
+  if (isDef(parent)) {
+    if (isDef(ref)) {
+      if (nodeOps.parentNode(ref) === parent) {
+        nodeOps.insertBefore(parent, elm, ref);
+      }
+    } else {
+      nodeOps.appendChild(parent, elm);
+    }
+  }
+}
+```
+#### （三）、removeVnodes
+&emsp;&emsp;删除节点的函数 *removeVnodes* 代码如下所示：<br/>
+```js
+function removeVnodes (vnodes, startIdx, endIdx) {
+  for (; startIdx <= endIdx; ++startIdx) {
+    const ch = vnodes[startIdx]
+    if (isDef(ch)) {
+      if (isDef(ch.tag)) {
+        removeAndInvokeRemoveHook(ch)
+        invokeDestroyHook(ch)
+      } else {
+        removeNode(ch.elm)
+      }
+    }
+  }
+}
+```
+&emsp;&emsp;删除文本节点直接调用 *removeNode* 函数完成，删除元素节点则先调用 *removeAndInvokeRemoveHook* 然后调用 *invokeDestroyHook* 完成。<br/>
+&emsp;&emsp;*removeNode* 方法主要是调用DOM节点原生方法 *removeChild* 完成对节点的删除。<br/>
+```js
+function removeNode (el) {
+  const parent = nodeOps.parentNode(el)
+  if (isDef(parent)) {
+    nodeOps.removeChild(parent, el)
+  }
+}
+```
+&emsp;&emsp;*removeAndInvokeRemoveHook* 主要作用是在删除节点之前调用 *cbs.remove* 数组中的钩子函数。<br/>
+#### （四）、递归更新父节点元素
+&emsp;&emsp;在新的真实DOM创建并插入后，会执行如下代码：<br/>
+```js
+if (isDef(vnode.parent)) {
+  let ancestor = vnode.parent
+  const patchable = isPatchable(vnode)
+  while (ancestor) {
+    for (let i = 0; i < cbs.destroy.length; ++i) {
+      cbs.destroy[i](ancestor)
+    }
+    ancestor.elm = vnode.elm
+    if (patchable) {
+      for (let i = 0; i < cbs.create.length; ++i) {
+        cbs.create[i](emptyNode, ancestor)
+      }
+      const insert = ancestor.data.hook.insert
+      if (insert.merged) {
+        for (let i = 1; i < insert.fns.length; i++) {
+          insert.fns[i]()
+        }
+      }
+    } else {
+      registerRef(ancestor)
+    }
+    ancestor = ancestor.parent
+  }
+}
+
+```
+&emsp;&emsp;主要依据是如果DOM树中有一个节点发生改变，则认为其父节点以及祖先节点都发生了改变。在此处的提现是父节点以及祖先节点调用相应的钩子函数，并且更新组件实例上 *$refs.ref* 属性的指向。<br/>
+#### （五）、小结
+&emsp;&emsp;*patch* 函数的逻辑如下：<br/>
+> 1、如果新节点不存在，旧节点存在，则在调用 *invokeDestroyHook* 函数后直接销毁旧节点。<br/>
+> 2、如果新节点存在，旧节点不存在，则调用 *createElm* 创建新真实DOM节点并插入到正确位置。<br/>
+> 3、如果新旧节点是同一节点且都是VNode类型，则调用 *patchVnode* 函数进行 *patch*。<br/>
+> 4、如果新旧节点不是同一节点或者旧节点是真实DOM类型，根据新VNode创建一个真实DOM节点，插入到旧节点的位置，将旧节点替换掉。<br/>
 ## 四、diff算法
+&emsp;&emsp;在讲述 *patch* 的大致流程时，有一个很核心的地方没说，那就是当新旧节点是同一节点且都是VNode类型时如何对新旧节点进行比对。在 *patch* 函数中的其它分支基本不存在新旧节点比对的情况，因此可以说只有在该情况下才会使用 *diff* 算法。整个比对过程是在 *patchVnode* 函数中进行的。<br/>
+### 1、patchVnode函数
+&emsp;&emsp;*patchVnode* 函数代码如下所示：<br/>
+```js
+function patchVnode (oldVnode,vnode,insertedVnodeQueue,ownerArray,index,removeOnly) {
+  if (oldVnode === vnode) { return }
+  if (isDef(vnode.elm) && isDef(ownerArray)) {
+    vnode = ownerArray[index] = cloneVNode(vnode)
+  }
+  const elm = vnode.elm = oldVnode.elm
+  if (isTrue(oldVnode.isAsyncPlaceholder)) {
+    if (isDef(vnode.asyncFactory.resolved)) {
+      hydrate(oldVnode.elm, vnode, insertedVnodeQueue)
+    } else {
+      vnode.isAsyncPlaceholder = true
+    }
+    return
+  }
+  if (isTrue(vnode.isStatic) && isTrue(oldVnode.isStatic) &&
+    vnode.key === oldVnode.key && (isTrue(vnode.isCloned) || isTrue(vnode.isOnce))
+  ) {
+    vnode.componentInstance = oldVnode.componentInstance
+    return
+  }
+
+  let i
+  const data = vnode.data
+  if (isDef(data) && isDef(i = data.hook) && isDef(i = i.prepatch)) {
+    i(oldVnode, vnode)
+  }
+
+  const oldCh = oldVnode.children
+  const ch = vnode.children
+  if (isDef(data) && isPatchable(vnode)) {
+    for (i = 0; i < cbs.update.length; ++i) cbs.update[i](oldVnode, vnode)
+    if (isDef(i = data.hook) && isDef(i = i.update)) i(oldVnode, vnode)
+  }
+  if (isUndef(vnode.text)) {
+    if (isDef(oldCh) && isDef(ch)) {
+      if (oldCh !== ch) updateChildren(elm, oldCh, ch, insertedVnodeQueue, removeOnly)
+    } else if (isDef(ch)) {
+      if (process.env.NODE_ENV !== 'production') {
+        checkDuplicateKeys(ch)
+      }
+      if (isDef(oldVnode.text)) nodeOps.setTextContent(elm, '')
+      addVnodes(elm, null, ch, 0, ch.length - 1, insertedVnodeQueue)
+    } else if (isDef(oldCh)) {
+      removeVnodes(oldCh, 0, oldCh.length - 1)
+    } else if (isDef(oldVnode.text)) {
+      nodeOps.setTextContent(elm, '')
+    }
+  } else if (oldVnode.text !== vnode.text) {
+    nodeOps.setTextContent(elm, vnode.text)
+  }
+  if (isDef(data)) {
+    if (isDef(i = data.hook) && isDef(i = i.postpatch)) i(oldVnode, vnode)
+  }
+}
+```
+&emsp;&emsp;*patchVnode* 函数的主要逻辑如图所示：<br/>
+![patch](../image/vue/patch_2.png)
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+### 2、updateChildren函数
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+### 3、小结
+&emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 ## 五、总结
