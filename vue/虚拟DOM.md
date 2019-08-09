@@ -1,7 +1,7 @@
 # Vue2.0源码阅读笔记（六）：Virtual DOM
 &emsp;&emsp;Vue2.0 与 Vue1.0最大的区别就是使用了 Virtual DOM 。使用虚拟DOM的好处主要有两点：<br/>
 > 1、采取分层设计的思想，抽象渲染过程，使框架可以渲染到多个平台。<br/>
-> 1、在复杂页面中，比直接操作原生 DOM 性能更好。<br/>
+> 1、很多时候使用虚拟DOM性能不是最好，但是能在性能和可维护性之间达到一个平衡。<br/>
 
 &emsp;&emsp;在具体介绍虚拟DOM之前，先找到DOM挂载方法的位置与生成的过程。<br/>
 ## 一、DOM挂载方法
@@ -110,7 +110,7 @@ export default class VNode {
     this.fnContext = undefined
     this.fnOptions = undefined
     this.fnScopeId = undefined
-    this.key = data && data.key // 节点key值，在diff算法中用于优化
+    this.key = data && data.key // 节点key值，在diff算法中作用节点复用的依据
     this.componentOptions = componentOptions
     this.componentInstance = undefined
     this.parent = undefined // 父节点
@@ -791,8 +791,8 @@ if (isDef(vnode.parent)) {
 &emsp;&emsp;*patch* 函数的逻辑如下：<br/>
 > 1、如果新节点不存在，旧节点存在，则在调用 *invokeDestroyHook* 函数后直接销毁旧节点。<br/>
 > 2、如果新节点存在，旧节点不存在，则调用 *createElm* 创建新真实DOM节点并插入到正确位置。<br/>
-> 3、如果新旧节点是同一节点且都是VNode类型，则调用 *patchVnode* 函数进行 *patch*。<br/>
-> 4、如果新旧节点不是同一节点或者旧节点是真实DOM类型，根据新VNode创建一个真实DOM节点，插入到旧节点的位置，将旧节点替换掉。<br/>
+> 3、如果新旧节点基本属性一样且都是VNode类型，则调用 *patchVnode* 函数进行 *patch*。<br/>
+> 4、如果新旧节点基本属性不一样或者旧节点是真实DOM类型，根据新VNode创建一个真实DOM节点，插入到旧节点的位置，将旧节点替换掉。<br/>
 ## 四、diff算法
 &emsp;&emsp;在讲述 *patch* 的大致流程时，有一个很核心的地方没说，那就是当新旧节点是同一节点且都是VNode类型时如何对新旧节点进行比对。在 *patch* 函数中的其它分支基本不存在新旧节点比对的情况，因此可以说只有在该情况下才会使用 *diff* 算法。整个比对过程是在 *patchVnode* 函数中进行的。<br/>
 ### 1、patchVnode函数
@@ -855,9 +855,115 @@ function patchVnode (oldVnode,vnode,insertedVnodeQueue,ownerArray,index,removeOn
 ```
 &emsp;&emsp;*patchVnode* 函数的主要逻辑如图所示：<br/>
 ![patch](../image/vue/patch_2.png)
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+&emsp;&emsp;*patchVnode* 函数对节点的比较主要有以下六种情况：<br/>
+> 1、如果新旧节点一样，则不做比较。<br/>
+> 2、如果新节点是文本节点，继续判断文本是否需要修改，如需修改则调用 *setTextContent* 方法完成。<br/>
+> 3、如果新旧节点都有子节点且不相同，则调用 *updateChildren* 函数进行子节点对比。<br/>
+> 4、如果只有新节点有子节点，则创建真实DOM节点添加到子节点位置。<br/>
+> 5、如果只有旧节点有子节点，则直接删除旧节点的子节点。<br/>
+> 6、如果旧节点文本节点而新节点文本属性为空，则将节点文本内容置空。<br/>
+
+&emsp;&emsp;其中，当新旧节点都有子节点并且子节点不同时，会调用 *updateChildren* 函数对子节点进行比较，该函数是 *diff* 算法的核心，下面专门介绍这一部分。<br/>
 ### 2、updateChildren函数
+&emsp;&emsp;子节点对比函数 *updateChildren* 的代码看起来比较复杂，下面是添加注释说明的代码：<br/>
+```js
+function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly) {
+  let oldStartIdx = 0
+  let newStartIdx = 0
+  let oldEndIdx = oldCh.length - 1
+  let oldStartVnode = oldCh[0]
+  let oldEndVnode = oldCh[oldEndIdx]
+  let newEndIdx = newCh.length - 1
+  let newStartVnode = newCh[0]
+  let newEndVnode = newCh[newEndIdx]
+  let oldKeyToIdx, idxInOld, vnodeToMove, refElm
+  const canMove = !removeOnly
+
+  if (process.env.NODE_ENV !== 'production') {
+    checkDuplicateKeys(newCh)
+  }
+
+  while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+    if (isUndef(oldStartVnode)) {
+      oldStartVnode = oldCh[++oldStartIdx]
+    } else if (isUndef(oldEndVnode)) {
+      oldEndVnode = oldCh[--oldEndIdx]
+    } else if (sameVnode(oldStartVnode, newStartVnode)) {
+      patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
+      oldStartVnode = oldCh[++oldStartIdx]
+      newStartVnode = newCh[++newStartIdx]
+    } else if (sameVnode(oldEndVnode, newEndVnode)) {
+      patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
+      oldEndVnode = oldCh[--oldEndIdx]
+      newEndVnode = newCh[--newEndIdx]
+    } else if (sameVnode(oldStartVnode, newEndVnode)) { // Vnode moved right
+      patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
+      canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm))
+      oldStartVnode = oldCh[++oldStartIdx]
+      newEndVnode = newCh[--newEndIdx]
+    } else if (sameVnode(oldEndVnode, newStartVnode)) { // Vnode moved left
+      patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
+      canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm)
+      oldEndVnode = oldCh[--oldEndIdx]
+      newStartVnode = newCh[++newStartIdx]
+    } else {
+      if (isUndef(oldKeyToIdx)) oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx)
+      idxInOld = isDef(newStartVnode.key)
+        ? oldKeyToIdx[newStartVnode.key]
+        : findIdxInOld(newStartVnode, oldCh, oldStartIdx, oldEndIdx)
+      if (isUndef(idxInOld)) { // New element
+        createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx)
+      } else {
+        vnodeToMove = oldCh[idxInOld]
+        if (sameVnode(vnodeToMove, newStartVnode)) {
+          patchVnode(vnodeToMove, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
+          oldCh[idxInOld] = undefined
+          canMove && nodeOps.insertBefore(parentElm, vnodeToMove.elm, oldStartVnode.elm)
+        } else {
+          // same key but different element. treat as new element
+          createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx)
+        }
+      }
+      newStartVnode = newCh[++newStartIdx]
+    }
+  }
+  if (oldStartIdx > oldEndIdx) {
+    refElm = isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm
+    addVnodes(parentElm, refElm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue)
+  } else if (newStartIdx > newEndIdx) {
+    removeVnodes(oldCh, oldStartIdx, oldEndIdx)
+  }
+}
+```
+&emsp;&emsp;*updateChildren* 函数的主要逻辑如图所示：<br/>
+![patch](../image/vue/patch_3.png)
+&emsp;&emsp;如果按照图中这种以代码为主导的分析方式会比较繁琐，下面按照 *diff* 算法对不同情况的处理情况来加以分析。<br/>
+#### （一）、节点复用
+&emsp;&emsp;首先要说明Vue的 *diff* 算法在比较节点时，只会进行同级比较，不会跨层比较。如下图所示：<br/>
+![patch](../image/vue/patch_4.png)
+&emsp;&emsp;在同级比较子节点时，可以采取的方式有很多，如下图这种情况：<br/>
+![patch](../image/vue/patch_5.png)
+&emsp;&emsp;在这种情况下，可以将旧的子节点全部删除，然后根据新的子节点生成对应的DOM。采用这种简单粗暴的方式，性能会非常差。因为新建和删除真实DOM节点性能开销都是比较大的，应该尽量复用DOM节点。<br/>
+&emsp;&emsp;很简单可以看出，如图所示的情况只要将节点C移至节点A之前即可，一步操作即可完成。这样复用节点的性能很高。<br/>
+![patch](../image/vue/patch_6.png)
+&emsp;&emsp;节点是否可以被复用是通过 *sameVnode* 方法判定的，两个VNode的 *key* 属性、*tag* 属性、*isComment* 属性等都相同，则被判定为相同节点，可以复用。可以复用的VNode一般仅仅是 *children* 与 *VNodeData* 属性不同，更新属性信息以及子节点信息就能完成对节点的复用。<br/>
+#### （二）、双端比较
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;时间复杂度<br/>
+#### （三）、双端比较未成功
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+#### （四）、添加新节点
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+#### （五）、删除旧节点
+&emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
