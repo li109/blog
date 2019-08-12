@@ -794,8 +794,15 @@ if (isDef(vnode.parent)) {
 > 3、如果新旧节点基本属性一样且都是VNode类型，则调用 *patchVnode* 函数进行 *patch*。<br/>
 > 4、如果新旧节点基本属性不一样或者旧节点是真实DOM类型，根据新VNode创建一个真实DOM节点，插入到旧节点的位置，将旧节点替换掉。<br/>
 ## 四、diff算法
-&emsp;&emsp;在讲述 *patch* 的大致流程时，有一个很核心的地方没说，那就是当新旧节点是同一节点且都是VNode类型时如何对新旧节点进行比对。在 *patch* 函数中的其它分支基本不存在新旧节点比对的情况，因此可以说只有在该情况下才会使用 *diff* 算法。整个比对过程是在 *patchVnode* 函数中进行的。<br/>
+&emsp;&emsp;在讲述 *patch* 的大致流程时，有一个很核心的地方没说，那就是当新旧节点是基础属性相同且都是VNode类型时如何对新旧节点进行比对。在 *patch* 函数中的其它分支基本不存在新旧节点比对的情况，因此可以说只有在该情况下才会使用 *diff* 算法。整个比对过程是在 *patchVnode* 函数中进行的。<br/>
 ### 1、patchVnode函数
+&emsp;&emsp;需要特别强调的是：**patchVnode 函数的主要功能就是复用节点。**<br/>
+&emsp;&emsp;节点是否可以被复用是通过 *sameVnode* 方法判定的，两个VNode的 *key* 属性、*tag* 属性、*isComment* 属性等都相同，则被判定为相同节点，可以复用。可以复用的VNode一般仅仅是 *children* 与 *VNodeData* 属性不同。<br/>
+&emsp;&emsp;*patchVnode* 函数复用节点核心为三步：<br/>
+> 1、*vnode.el* 与 *oldVnode.el* 都指向的旧的真实DOM节点。<br/>
+> 2、根据 *vnode* 属性更新真实DOM的属性。<br/>
+> 3、根据 *vnode* 的子节点属性来更新真实DOM的子节点。<br/>
+
 &emsp;&emsp;*patchVnode* 函数代码如下所示：<br/>
 ```js
 function patchVnode (oldVnode,vnode,insertedVnodeQueue,ownerArray,index,removeOnly) {
@@ -855,6 +862,7 @@ function patchVnode (oldVnode,vnode,insertedVnodeQueue,ownerArray,index,removeOn
 ```
 &emsp;&emsp;*patchVnode* 函数的主要逻辑如图所示：<br/>
 ![patch](../image/vue/patch_2.png)
+&emsp;&emsp;当 vnode 为标签类型且有属性时会循环调用 *cbs.update* 数组中的函数，完成节点各种属性的更新。<br/>
 &emsp;&emsp;*patchVnode* 函数对节点的比较主要有以下六种情况：<br/>
 > 1、如果新旧节点一样，则不做比较。<br/>
 > 2、如果新节点是文本节点，继续判断文本是否需要修改，如需修改则调用 *setTextContent* 方法完成。<br/>
@@ -865,7 +873,7 @@ function patchVnode (oldVnode,vnode,insertedVnodeQueue,ownerArray,index,removeOn
 
 &emsp;&emsp;其中，当新旧节点都有子节点并且子节点不同时，会调用 *updateChildren* 函数对子节点进行比较，该函数是 *diff* 算法的核心，下面专门介绍这一部分。<br/>
 ### 2、updateChildren函数
-&emsp;&emsp;子节点对比函数 *updateChildren* 的代码看起来比较复杂，下面是添加注释说明的代码：<br/>
+&emsp;&emsp;子节点对比函数 *updateChildren* 的代码如下所示：<br/>
 ```js
 function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly) {
   let oldStartIdx = 0
@@ -946,12 +954,52 @@ function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly
 &emsp;&emsp;在这种情况下，可以将旧的子节点全部删除，然后根据新的子节点生成对应的DOM。采用这种简单粗暴的方式，性能会非常差。因为新建和删除真实DOM节点性能开销都是比较大的，应该尽量复用DOM节点。<br/>
 &emsp;&emsp;很简单可以看出，如图所示的情况只要将节点C移至节点A之前即可，一步操作即可完成。这样复用节点的性能很高。<br/>
 ![patch](../image/vue/patch_6.png)
-&emsp;&emsp;节点是否可以被复用是通过 *sameVnode* 方法判定的，两个VNode的 *key* 属性、*tag* 属性、*isComment* 属性等都相同，则被判定为相同节点，可以复用。可以复用的VNode一般仅仅是 *children* 与 *VNodeData* 属性不同，更新属性信息以及子节点信息就能完成对节点的复用。<br/>
 #### （二）、双端比较
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;时间复杂度<br/>
+&emsp;&emsp;Vue 采用双端比较算法来进行节点复用，会定义四个数组下标变量：旧开始节点下标oldStartIdx、旧结尾节点下标oldEndIdx、新开始节点下标newStartIdx、新结尾节点下标newEndIdx。同时定义四个指向新旧首尾节点的变量：旧开始节点oldStartVnode、旧结尾节点oldEndVnode、新开始节点newStartVnode、新结尾节点newEndVnode。<br/>
+&emsp;&emsp;双端比较算法会逐步比较这四个节点，旧节点数组中有可复用节点则依照如下规则处理：<br/>
+> 1、若 *oldStartVnode* 与 *newStartVnode* 为一组可复用节点，则调用 *patchVnode* 函数复用旧开始节点，然后将新旧开始节点前移。<br/>
+> 2、若 *oldEndVnode* 与 *newEndVnode* 为一组可复用节点，则调用 *patchVnode* 函数复用旧结尾节点，然后将新旧结尾节点后移。<br/>
+> 3、若 *oldStartVnode* 与 *newEndVnode* 为一组可复用节点，则调用 *patchVnode* 函数复用旧开始节点，然后将该真实DOM节点插入到 *oldEndVnode* 对应DOM节点的后面，最后前移旧开始节点、后移新结尾节点。<br/>
+> 4、若 *oldEndVnode* 与 *newStartVnode* 为一组可复用节点，则用 *patchVnode* 函数复用旧结尾节点，然后将该真实DOM节点插入到 *oldStartVnode* 对应DOM节点的前面，最后后移旧结束节点、前移新开始节点。<br/>
+
+&emsp;&emsp;在 *updateChildren* 函数代码中的体现如下：<br/>
+```js
+if (sameVnode(oldStartVnode, newStartVnode)) {
+  patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
+  oldStartVnode = oldCh[++oldStartIdx]
+  newStartVnode = newCh[++newStartIdx]
+} else if (sameVnode(oldEndVnode, newEndVnode)) {
+  patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
+  oldEndVnode = oldCh[--oldEndIdx]
+  newEndVnode = newCh[--newEndIdx]
+} else if (sameVnode(oldStartVnode, newEndVnode)) {
+  patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
+  canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm))
+  oldStartVnode = oldCh[++oldStartIdx]
+  newEndVnode = newCh[--newEndIdx]
+} else if (sameVnode(oldEndVnode, newStartVnode)) {
+  patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
+  canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm)
+  oldEndVnode = oldCh[--oldEndIdx]
+  newStartVnode = newCh[++newStartIdx]
+}
+```
+&emsp;&emsp;举个节点全部都可以复用的例子，这是双端比较算法最理想的情况。双端比较的顺序为：<br/>
+> 1、比较新旧开始节点。<br/>
+> 2、比较新旧结尾节点。<br/>
+> 3、比较旧开始节点与新结尾节点。<br/>
+> 4、比较旧结尾节点与新开始节点。<br/>
+
+![patch](../image/vue/patch_7.png)
+&emsp;&emsp;第一轮双端比较在第三次比对时找到可复用节点A，改造A对应的真实DOM节点然后插入到 *oldEndVnode* 对应DOM节点D的后面，最后前移旧开始节点、后移新结尾节点。<br/>
+![patch](../image/vue/patch_8.png)
+&emsp;&emsp;第二轮双端比较在第四次比对时找到可复用节点D，改造D对应的真实DOM节点然后插入到 *oldStartVnode* 对应DOM节点B的前面，最后前移新开始节点、后移旧结尾节点。<br/>
+![patch](../image/vue/patch_9.png)
+&emsp;&emsp;第三轮双端比较在第一次比对时找到可复用节点B，改造B对应的真实DOM节点，然后前移新旧开始节点。<br/>
+![patch](../image/vue/patch_10.png)
+&emsp;&emsp;第四轮双端比较在第一次比对时找到可复用节点C，改造C对应的真实DOM节点，然后前移新旧开始节点。<br/>
+![patch](../image/vue/patch_11.png)
+&emsp;&emsp;经过四轮双端比较之后，全部节点都已比对，并且节点的复用以及位置调整都已完成。<br/>
 #### （三）、双端比较未成功
 &emsp;&emsp;<br/>
 &emsp;&emsp;<br/>
