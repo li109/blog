@@ -1,7 +1,7 @@
 # Vue2.0源码阅读笔记（六）：Virtual DOM
 &emsp;&emsp;Vue2.0 与 Vue1.0最大的区别就是使用了 Virtual DOM 。使用虚拟DOM的好处主要有两点：<br/>
 > 1、采取分层设计的思想，抽象渲染过程，使框架可以渲染到多个平台。<br/>
-> 1、很多时候使用虚拟DOM性能不是最好，但是能在性能和可维护性之间达到一个平衡。<br/>
+> 2、很多时候使用虚拟DOM性能不是最好，但是能在性能和可维护性之间达到一个平衡。<br/>
 
 &emsp;&emsp;在具体介绍虚拟DOM之前，先找到DOM挂载方法的位置与生成的过程。<br/>
 ## 一、DOM挂载方法
@@ -904,12 +904,12 @@ function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly
       patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
       oldEndVnode = oldCh[--oldEndIdx]
       newEndVnode = newCh[--newEndIdx]
-    } else if (sameVnode(oldStartVnode, newEndVnode)) { // Vnode moved right
+    } else if (sameVnode(oldStartVnode, newEndVnode)) {
       patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx)
       canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm))
       oldStartVnode = oldCh[++oldStartIdx]
       newEndVnode = newCh[--newEndIdx]
-    } else if (sameVnode(oldEndVnode, newStartVnode)) { // Vnode moved left
+    } else if (sameVnode(oldEndVnode, newStartVnode)) {
       patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx)
       canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm)
       oldEndVnode = oldCh[--oldEndIdx]
@@ -919,7 +919,7 @@ function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly
       idxInOld = isDef(newStartVnode.key)
         ? oldKeyToIdx[newStartVnode.key]
         : findIdxInOld(newStartVnode, oldCh, oldStartIdx, oldEndIdx)
-      if (isUndef(idxInOld)) { // New element
+      if (isUndef(idxInOld)) {
         createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx)
       } else {
         vnodeToMove = oldCh[idxInOld]
@@ -928,7 +928,6 @@ function updateChildren (parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly
           oldCh[idxInOld] = undefined
           canMove && nodeOps.insertBefore(parentElm, vnodeToMove.elm, oldStartVnode.elm)
         } else {
-          // same key but different element. treat as new element
           createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, false, newCh, newStartIdx)
         }
       }
@@ -984,12 +983,13 @@ if (sameVnode(oldStartVnode, newStartVnode)) {
   newStartVnode = newCh[++newStartIdx]
 }
 ```
-&emsp;&emsp;举个节点全部都可以复用的例子，这是双端比较算法最理想的情况。双端比较的顺序为：<br/>
+&emsp;&emsp;双端比较的顺序为：<br/>
 > 1、比较新旧开始节点。<br/>
 > 2、比较新旧结尾节点。<br/>
 > 3、比较旧开始节点与新结尾节点。<br/>
 > 4、比较旧结尾节点与新开始节点。<br/>
 
+&emsp;&emsp;举个节点全部都可以复用的例子，这是双端比较算法最理想的情况：<br/>
 ![patch](../image/vue/patch_7.png)
 &emsp;&emsp;第一轮双端比较在第三次比对时找到可复用节点A，改造A对应的真实DOM节点然后插入到 *oldEndVnode* 对应DOM节点D的后面，最后前移旧开始节点、后移新结尾节点。<br/>
 ![patch](../image/vue/patch_8.png)
@@ -999,26 +999,101 @@ if (sameVnode(oldStartVnode, newStartVnode)) {
 ![patch](../image/vue/patch_10.png)
 &emsp;&emsp;第四轮双端比较在第一次比对时找到可复用节点C，改造C对应的真实DOM节点，然后前移新旧开始节点。<br/>
 ![patch](../image/vue/patch_11.png)
-&emsp;&emsp;经过四轮双端比较之后，全部节点都已比对，并且节点的复用以及位置调整都已完成。<br/>
-#### （三）、双端比较未成功
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-#### （四）、添加新节点
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-#### （五）、删除旧节点
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-### 3、小结
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+&emsp;&emsp;经过四轮双端比较之后，全部节点都已比对，并且节点的复用以及位置调整都已完成。双端比较的结束条件是**新旧子节点中有开始节点的下标大于结尾节点的下标**。因此，上述双端比较代码会包裹在如下条件中：<br/>
+```js
+while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx){
+  /* 双端比较代码 */
+}
+```
+#### （三）、非理想情况下的双端比较
+&emsp;&emsp;当经过四轮双端比较，也就是新旧首尾节点都比较之后，如果没有发现可复用的节点，则使用新开始节点与未处理的旧子节点挨个比较，找寻可复用的节点。<br/>
+&emsp;&emsp;这种比对的结果有两种情况：**找到新开始节点对应的可复用旧节点**、**未找到可复用旧节点**。<br/>
+&emsp;&emsp;在代码中的实现是借助两个变量来判断的：*oldKeyToIdx*、*idxInOld*。<br/>
+```js
+if(isUndef(oldKeyToIdx))oldKeyToIdx = createKeyToOldIdx(oldCh, oldStartIdx, oldEndIdx)
+idxInOld = isDef(newStartVnode.key) ? oldKeyToIdx[newStartVnode.key] : null
+```
+&emsp;&emsp;两个变量的含义为：<br/>
+> oldKeyToIdx：存放未处理旧子节点 *key* 值下标的对象。<br/>
+> idxInOld：与新开始节点 *key*值相同的旧节点下标。<br/>
+
+&emsp;&emsp;此处找寻可复用节点分两步进行：首先比较 *key* 值，如果 *key* 值不相同，则直接可以判定该节点不是可复用节点；如果 *key* 值相同，再调用 *sameVnode* 函数精确判断是否为可复用节点。所以这段代码的结构如下所示：<br/>
+```js
+if(isUndef(idxInOld)) {
+/* key 值不相同，节点不可复用 */
+} else {
+  elmToMove = oldCh[idxInOld]
+  if (sameVnode(elmToMove, newStartVnode)) {
+    /* key 相同且节点可以复用 */
+  } else {
+    /* key 值相同但是节点不可复用 */
+  }
+}
+```
+&emsp;&emsp;若未找到新开始节点对应可复用的节点，则表示这个节点是新添加的。生成该VNode对应的真实DOM，将其插入到旧开始节点对应DOM的前面，最后新开始节点前移。处理代码如下：<br/>
+```js
+createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm)
+newStartVnode = newCh[++newStartIdx]
+```
+&emsp;&emsp;如果找到可复用节点，则更新该节点对应DOM的信息，将其移到旧开始节点对应的前面。同时将可复用旧节点置为空，然后将新开始节点前移。<br/>
+```js
+patchVnode(elmToMove, newStartVnode, insertedVnodeQueue)
+oldCh[idxInOld] = undefined
+canMove && nodeOps.insertBefore(parentElm, elmToMove.elm, oldStartVnode.elm)
+newStartVnode = newCh[++newStartIdx]
+```
+&emsp;&emsp;有一个问题需要注意：**上面提到在非双端节点可复用时，在操作DOM之后将VNode置为空**。也就是说，在之后的双端比较时旧开始或者结尾节点有可能为空，上述代码并没有处理这种情况，因此添加如下代码：<br/>
+```js
+if (isUndef(oldStartVnode)) {
+  oldStartVnode = oldCh[++oldStartIdx]
+} else if (isUndef(oldEndVnode)) {
+  oldEndVnode = oldCh[--oldEndIdx]
+}
+```
+&emsp;&emsp;处理的方式很简单，遇到为空的情况直接跳过，移动节点即可。<br/>
+&emsp;&emsp;至此，双端比较在开始节点下标没有大于结尾下标的情况已经全部说完，下面给出简略版代码：<br/>
+```js
+while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
+  if (isUndef(oldStartVnode)) {
+    /* 该位置原本节点已经复用，仅仅移动节点 */
+  } else if (isUndef(oldEndVnode)) {
+    /* 该位置原本节点已经复用，仅仅移动节点 */
+  } else if (sameVnode(oldStartVnode, newStartVnode)) {
+    /* 双端比较第一轮：比较新旧开始节点 */
+  } else if (sameVnode(oldEndVnode, newEndVnode)) {
+    /* 双端比较第二轮：比较新旧结尾节点 */
+  } else if (sameVnode(oldStartVnode, newEndVnode)) {
+    /* 双端比较第三轮：比较新结尾节点与旧开始节点 */
+  } else if (sameVnode(oldEndVnode, newStartVnode)) {
+    /* 双端比较第四轮：比较新开始节点与旧结尾节点 */
+  } else {
+    if (isUndef(idxInOld)) {
+      /* 旧节点数组中没有和新开始节点key值相同的节点 */
+    } else {
+      if (sameVnode(elmToMove, newStartVnode)) {
+        /* 旧节点数组中有新开始节点可以复用的节点 */
+      } else {
+        /* 旧节点数组中没有新开始节点能够复用的节点 */
+      }
+    }
+  }
+}
+```
+#### （四）、处理剩余节点
+&emsp;&emsp;双端比较算法是从两端向中间方向处理，如果当新旧节点数组有一个处理完毕另一个没处理完，双端比较算法就没办法进行下去。<br/>
+&emsp;&emsp;简单分析可知，如果旧节点数组处理完毕而新节点数组中还有节点，说明有新的DOM节点需要添加；如果新节点数组处理完毕而旧节点数组中还有节点，说明有旧的DOM节点需要删除。如下代码所示：<br/>
+```js
+if (oldStartIdx > oldEndIdx) {
+  refElm = isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm
+  addVnodes(parentElm, refElm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue)
+} else if (newStartIdx > newEndIdx) {
+  removeVnodes(parentElm, oldCh, oldStartIdx, oldEndIdx)
+}
+```
+&emsp;&emsp;当只有新节点数组中还有未处理节点时，则创建新节点并插入到适当位置中；当只有旧节点还有未处理节点时，则删除节点对应的DOM。<br/>
 ## 五、总结
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+&emsp;&emsp;Vue在进行一系列初始化之后挂载DOM，挂载函数 *$mount* 本质是调用 *mountComponent* 来完成渲染函数生成DOM并挂载的过程。<br/>
+&emsp;&emsp;挂载时首先调用 *_render* 方法根据渲染函数生成虚拟DOM，然后调用 *_update* 方法在首次渲染时将虚拟DOM转化成真实DOM并挂载，在数据更新时对比虚拟DOM的变化来对真实DOM进行更新。<br/>
+&emsp;&emsp;主要依靠 *createElement* 函数将生成虚拟DOM节点VNode，当然也有一些其它的辅助函数来帮助完成转化渲染函数的任务。VNode分为四类：组件类型、标签元素类型、注释类型、文本类型。<br/>
+&emsp;&emsp;*_update* 方法将虚拟DOM转化为真实DOM并在数据改变时更新视图的功能主要时调用 *patch* 函数完成的。*patch* 根据新旧VNode的具体情况来进行相应处理，比较核心的是为了提升性能在旧节点能够复用时调用 *patchVnode* 函数进行节点复用。<br/>
+&emsp;&emsp;如果标签节点基本属性一样，可以被复用，则通常只需更新真实DOM的属性和子节点即可。子节点的更新由 *updateChildren* 函数完成。在 *updateChildren* 中主要采用双端比较算法来进行新旧子节点对比。<br/>
