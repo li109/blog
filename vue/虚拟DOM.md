@@ -535,7 +535,7 @@ modules = [
 > 4、*updateDOMProps* 函数是更新一些特殊的属性：不能通过 *setAttribute* 设置，而是应该直接通过 DOM 元素设置的属性。比如：*value*、*checked*等。<br/>
 > 5、*updateStyle* 函数的作用是更新真实DOM的 *style* 值。<br/>
 > 6、数组第六个元素对象中的方法是与过渡相关的部分，后续文章会有一篇专门用来讲解过渡，这里先忽略。<br/>
-> 7、*registerRef* 函数在第二个参数为 *false* 时，功能是注册 *ref*，即将父组件的 *vm.$refs.ref* 的值指向子组件真实DOM，其中 *ref* 的值为 VNode的 *data.ref* 属性；在第二个参数为 *true* 时，表示解除 *vm.$refs.ref* 对子组件真实DOM的引用。<br/>
+> 7、*registerRef* 函数在第二个参数为 *false* 时，功能是注册 *ref*，即将父组件的 *vm.\$refs.ref* 的值指向子组件真实DOM，其中 *ref* 的值为 VNode的 *data.ref* 属性；在第二个参数为 *true* 时，表示解除 *vm.$refs.ref* 对子组件真实DOM的引用。<br/>
 > 8、*updateDirectives* 函数的作用是在DOM更新时触发自定义指令上的钩子函数。<br/>
 #### （三）、局部变量cbs
 &emsp;&emsp;局部变量 *cbs* 是 *modules* 的另外一种形式，*modules* 数组是按照处理问题的方面来分类的，*cbs* 是按照调用的时机来分类的。<br/>
