@@ -6,6 +6,7 @@
 - [nextTick](https://juejin.im/post/5cd90cd5518825695f30d2b3)
 - [模板编译](https://juejin.im/post/5d4135336fb9a06b160f094d)
 - [Virtual DOM](https://juejin.im/post/5d536743e51d456205410382)
+- [组件](https://juejin.im/post/5da42eb16fb9a04dfd267369)
 #### 网络学习笔记
 - [TCP连接的建立与关闭](https://juejin.im/post/5c8f6124e51d4515ac0ec446)
 - [TCP可靠传输原理](https://juejin.im/post/5c8f615ff265da612009824a)
