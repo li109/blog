@@ -20,7 +20,7 @@
   </footer>
 </div>
 ```
-&emsp;&emsp;使用 slot 属性实现具名插槽，没有 slot 属性的按照放在默认插槽中，如果子组件中没有实现默认插槽则丢弃该部分内容。<br/>
+&emsp;&emsp;使用 slot 属性实现具名插槽时，没有 slot 属性的按照放在默认插槽中，如果子组件中没有实现默认插槽则丢弃该部分内容。<br/>
 ```html
 <base-layout>
   <template slot="header">
@@ -165,9 +165,9 @@
 ```
 &emsp;&emsp;采用新指令 v-slot 而不是修复 slot-scope 功能漏洞的原因主要有以下三点：<br/>
 > 1、Vue2.x版本在2.6.0时已到了后期，Vue3.x马上发布了，类似这种突破性的改变没有合适的时机发布。<br/>
-> 2、一旦改变 slot-scope 的功能，会使得之前关于 slot-scope 的资料全部过时，容容易给新学习者带来迷惑。<br/>
+> 2、一旦改变 slot-scope 的功能，会使得之前关于 slot-scope 的资料全部过时，容易给新学习者带来迷惑。<br/>
 > 3、在3.x中，插槽类型将会被统一起来，使用 v-slot 指令统一语法是很好的选择。<br/>
-## 三、slot、slot-scope属性
+## 三、插槽原理解析
 &emsp;&emsp;虽然 slot、slot-scope 被废弃，不建议开发者使用，但是在 Vue2.6.0 版本里依然保留其实现代码，这两个属性依然可以使用。因此探究二者的实现代码还是挺有必要的。<br/>
 &emsp;&emsp;以下面示例代码的编译渲染过程来阐述 slot、slot-scope 属性的实现原理。<br/>
 ```html
@@ -187,7 +187,7 @@
   <slot name="footer" footer="尾部"></slot>
 </div>
 ```
-### 1、编译
+### 1、父组件slot、slot-scope属性的编译
 &emsp;&emsp;在模板编译的过程中，解析结束标签时会调用 *processElement* 函数对 AST 中的当前节点进行处理：<br/>
 ```js
 function processElement(element,options) {
@@ -196,7 +196,7 @@ function processElement(element,options) {
   /*...*/
 }
 ```
-&emsp;&emsp;对插槽的解析，就从 *processSlotContent* 函数开始。*processSlotContent* 函数对普通插槽属性 slot 的处理代码如下：<br/>
+&emsp;&emsp;对插槽的解析，就从 *processSlotContent* 函数开始。*processSlotContent* 函数对普通插槽属性 slot、slot-scope 的处理代码如下：<br/>
 ```js
 function processSlotContent (el) {
   var slotScope;
@@ -204,7 +204,7 @@ function processSlotContent (el) {
     slotScope = getAndRemoveAttr(el, 'scope');
     if (slotScope) {/* 省略警告信息 */}
       el.slotScope = slotScope || getAndRemoveAttr(el, 'slot-scope');
-    } else if ((slotScope = getAndRemoveAttr(el, 'slot-scope'))) {
+  } else if ((slotScope = getAndRemoveAttr(el, 'slot-scope'))) {
     if (el.attrsMap['v-for']) {/* 省略警告信息 */}
     el.slotScope = slotScope;
   }
@@ -217,13 +217,13 @@ function processSlotContent (el) {
       addAttr(el, 'slot', slotTarget, getRawBindingAttr(el, 'slot'));
     }
   }
-    /* 省略v-slot相关部分 */
+  /* 省略v-slot相关部分 */
 }
 ```
 &emsp;&emsp;processSlotContent 函数主要有以下几点功能：<br/>
 > 1、将作用域插槽信息取出，然后赋值给节点 slotScope 属性。<br/>
 > 2、取出插槽名称赋值给节点 slotTarget 属性，如果没有则置为 default。<br/>
-> 3、根据slot值是否使用了v-bind指令绑定来赋予节点slotTargetDynamic不同的布尔值。<br/>
+> 3、根据slot值是否使用了v-bind指令绑定来赋予节点slotTargetDynamic属性不同的布尔值。<br/>
 > 4、如果 slot 是普通标签（非template）的属性且不是作用域插槽，则在节点上添加 attrs 对象数组，用于存储 slot 的信息。<br/>
 
 &emsp;&emsp;属性 slot、slot-scope 在优化 AST 的部分不进行处理，在根据 AST 生成渲染函数时会调用 *genData* 函数处理节点属性。<br/>
@@ -244,33 +244,9 @@ function genData (el, state){
 function genScopedSlots (el,slots,state){
   let needsForceUpdate = el.for || Object.keys(slots).some(key => {
     const slot = slots[key]
-    return (
-      slot.slotTargetDynamic ||
-      slot.if ||
-      slot.for ||
-      containsSlotChild(slot)
-    )
+    return (slot.slotTargetDynamic||slot.if||slot.for||containsSlotChild(slot))
   })
-
-  let needsKey = !!el.if
-
-  if (!needsForceUpdate) {
-    let parent = el.parent
-    while (parent) {
-      if (
-        (parent.slotScope && parent.slotScope !== emptySlotScopeToken) ||
-        parent.for
-      ) {
-        needsForceUpdate = true
-        break
-      }
-      if (parent.if) {
-        needsKey = true
-      }
-      parent = parent.parent
-    }
-  }
-
+  /* ... */
   const generatedSlots = Object.keys(slots)
     .map(key => genScopedSlot(slots[key], state))
     .join(',')
@@ -282,19 +258,14 @@ function genScopedSlots (el,slots,state){
   })`
 }
 ```
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
-&emsp;&emsp;另外一点需要注意的是，上面提到过不是在 template 上使用普通插槽是，会将 slot 信息存储到 attrs 中，因此 *genData* 函数中对 attrs 的处理也可能与普通插槽有关：<br/>
+&emsp;&emsp;可以看到只带有 slot 属性的节点被正常解析成子组件的子节点，而带有 slot-scope 属性的节点被 _u() 方法包裹，作为子组件 scopedSlots 属性的一部分。<br/>
+&emsp;&emsp;另外一点需要注意的是，上面提到过不在 template 上使用普通插槽时，会将 slot 信息存储到 attrs 中，因此 *genData* 函数中对 attrs 的处理也可能与普通插槽有关：<br/>
 ```js
 if (el.attrs) {
   data += `attrs:${genProps(el.attrs)},`
 }
 ```
-&emsp;&emsp;生成的渲染函数为：<br/>
+&emsp;&emsp;上述实例最终生成的渲染函数为：<br/>
 ```js
 _c(
   'div',
@@ -303,15 +274,15 @@ _c(
       'app-layout',
       {
         scopedSlots:_u(
-            [
-              {
-                key:"footer",
-                fn:function(slotProps){
-                  return _c('div',{},[_v(_s(slotProps.footer))])
-                }
+          [
+            {
+              key:"footer",
+              fn:function(slotProps){
+                return _c('div',{},[_v(_s(slotProps.footer))])
               }
-            ]
-          )
+            }
+          ]
+        )
       },
       [
         _c('template',{slot:"header"},[_v("标题")]),
@@ -323,95 +294,116 @@ _c(
   1
 )
 ```
-### 2、渲染
-&emsp;&emsp;假设有如下示例：<br/>
-## 四、v-slot指令
-### 1、生成AST
+### 2、v-slot 指令的编译
 &emsp;&emsp;*processSlotContent* 函数对指令 v-slot 的处理代码如下：<br/>
 ```js
-function processSlotContent (el) {
-  /* 省略... */
-  if (el.tag === 'template') {
-    const slotBinding = getAndRemoveAttrByRegex(el, slotRE)
-    if (slotBinding) {
-      if (process.env.NODE_ENV !== 'production') {
-        if (el.slotTarget || el.slotScope) {
-          warn(
-            `Unexpected mixed usage of different slot syntaxes.`,
-            el
-          )
-        }
-        if (el.parent && !maybeComponent(el.parent)) {
-          warn(
-            `<template v-slot> can only appear at the root level inside ` +
-            `the receiving the component`,
-            el
-          )
-        }
-      }
-      const { name, dynamic } = getSlotName(slotBinding)
-      el.slotTarget = name
-      el.slotTargetDynamic = dynamic
-      el.slotScope = slotBinding.value || emptySlotScopeToken // force it into a scoped slot for perf
-    }
+if (el.tag === 'template') {
+  // v-slot on <template>
+  var slotBinding = getAndRemoveAttrByRegex(el, slotRE);
+  if (slotBinding) {
+    /*...*/
+    var ref = getSlotName(slotBinding);
+    var name = ref.name;
+    var dynamic = ref.dynamic;
+    el.slotTarget = name;
+    el.slotTargetDynamic = dynamic;
+    el.slotScope = slotBinding.value || emptySlotScopeToken;
   } else {
-    const slotBinding = getAndRemoveAttrByRegex(el, slotRE)
-    if (slotBinding) {
-      if (process.env.NODE_ENV !== 'production') {
-        if (!maybeComponent(el)) {
-          warn(
-            `v-slot can only be used on components or <template>.`,
-            slotBinding
-          )
-        }
-        if (el.slotScope || el.slotTarget) {
-          warn(
-            `Unexpected mixed usage of different slot syntaxes.`,
-            el
-          )
-        }
-        if (el.scopedSlots) {
-          warn(
-            `To avoid scope ambiguity, the default slot should also use ` +
-            `<template> syntax when there are other named slots.`,
-            slotBinding
-          )
-        }
-      }
-      // add the component's children to its default slot
-      const slots = el.scopedSlots || (el.scopedSlots = {})
-      const { name, dynamic } = getSlotName(slotBinding)
-      const slotContainer = slots[name] = createASTElement('template', [], el)
-      slotContainer.slotTarget = name
-      slotContainer.slotTargetDynamic = dynamic
-      slotContainer.children = el.children.filter((c: any) => {
-        if (!c.slotScope) {
-          c.parent = slotContainer
-          return true
-        }
-      })
-      slotContainer.slotScope = slotBinding.value || emptySlotScopeToken
-      // remove children as they are returned from scopedSlots now
-      el.children = []
-      // mark el non-plain so data gets generated
-      el.plain = false
-    }
+    /* 当被提供的内容只有默认插槽时，使用组件标签作为插槽的模板使用的情况 */
   }
 }
 ```
-&emsp;&emsp;<br/>
-### 2、生成渲染函数
-&emsp;&emsp;<br/>
-### 3、v-slot指令编译示例
-&emsp;&emsp;<br/>
-## 五、<slot>标签
-&emsp;&emsp;<br/>
-### 1、生成AST
-&emsp;&emsp;<br/>
-### 2、生成渲染函数
-&emsp;&emsp;<br/>
-### 3、<slot>标签编译示例
-&emsp;&emsp;<br/>
-## 六、总结
-&emsp;&emsp;<br/>
-&emsp;&emsp;<br/>
+&emsp;&emsp;可以看到在 \<template\> 标签上使用指令时，经过 processSlotContent 函数处理后，跟使用slot、slot-scope属性生成的结果一样，因此后续的处理与上一小节描述的相同。<br/>
+### 3、子组件\<slot\>标签的编译
+&emsp;&emsp;在编译过程中，会使用 processSlotOutlet 函数对 \<slot\> 标签处理，提取出 \<slot\> 标签上 name 属性的值。<br/>
+```js
+function processSlotOutlet (el) {
+  if (el.tag === 'slot') {
+    el.slotName = getBindingAttr(el, 'name')
+    /*...*/
+  }
+}
+```
+&emsp;&emsp;在 codegen 阶段会调用 genSlot 函数，根据子组件的内容生成被 _t() 包裹的字符串。<br/>
+```js
+function genSlot (el, state) {
+  var slotName = el.slotName || '"default"';
+  var children = genChildren(el, state);
+  var res = "_t(" + slotName + (children ? ("," + children) : '');
+  /* 省略标签上有属性以及有指令v-bind的情况 */
+  return res + ')'
+}
+```
+&emsp;&emsp;最终示例中子组件的渲染函数为：<br/>
+```js
+_c(
+  'div',
+  {staticClass:"container"},
+  [
+    _t("header"),
+    _t("default"),
+    _t("footer",null,{"footer":"尾部"})
+  ],
+  2
+)
+```
+### 4、渲染
+&emsp;&emsp;上述示例中父组件经过 _render 方法处理后生成的VNode如下所示：<br/>
+```js
+{
+  tag: "div",
+  children: [
+    {
+      tag: "vue-component-1-app-layout",
+      data: {
+        hook: {/* 省略... */},
+        on: undefined,
+        scopedSlots:{
+          footer: function(){/* 省略... */}
+        }
+      },
+      componentOptions:{
+        Ctro: function VueComponent (options) {
+          this._init(options);
+        },
+        children: [
+          {tag: "template",/* 省略... */}
+          {tag: "div",/* 省略... */}
+        ]
+        listeners: undefined
+        propsData: undefined
+        tag: "app-layout"
+      }
+      /* 省略其它属性 */
+    }
+  ]
+  /* 省略其它属性 */
+}
+```
+&emsp;&emsp;由上可知，仅含有 slot 属性的标签被处理成父组件的子VNode节点，含有 slot-scope 属性的标签被存放在父VNode的 data.scopedSlots 属性对象上。<br/>
+&emsp;&emsp;子组件 \<slot\> 标签生成的渲染函数中 _t() 为 renderSlot 函数：<br/>
+```js
+function renderSlot (name,fallback,props,bindObject) {
+  var scopedSlotFn = this.$scopedSlots[name];
+  var nodes;
+  if (scopedSlotFn) { // scoped slot
+    props = props || {};
+    /*...*/
+    nodes = scopedSlotFn(props) || fallback;
+  } else {
+    nodes = this.$slots[name] || fallback;
+  }
+
+  var target = props && props.slot;
+  if (target) {
+    return this.$createElement('template', { slot: target }, nodes)
+  } else {
+    return nodes
+  }
+}
+```
+&emsp;&emsp;renderSlot 函数返回值为父组件的子VNode数组，根据不同情况来完成父组件替换子组件插槽内容的过程。renderSlot 函数的逻辑分为两部分：<br/>
+> 1、如果是普通插槽，则取已经生成的以父实例为上下文的子VNode作为返回值。<br/>
+> 2、如果是作用域插槽，则根据 $scopedSlots 属性中的值生成新的VNode作为返回值。<br/>
+
+&emsp;&emsp;由此可知：**普通插槽只能使用父组件数据的原因在于其VNode是以父实例为上下文生成的，而作用域插槽则是在编译渲染子组件的时候才生成的。**<br/>
