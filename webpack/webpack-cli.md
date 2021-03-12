@@ -1,43 +1,92 @@
 # webpack5.0源码解析（一）：webpack-cli
-&emsp;&emsp;在开发基于 webpack 构建的项目时，一般都使用 npm run script 命令行的方式来完成启动本地服务器、打包等功能。探究从输入命令到最终完成构建的过程，是学习 webpack5.0 源码不错的突破口。<br/>
-&emsp;&emsp;本系列文章基于 webpack 4.30.0 版本以及 webpack-cli 3.3.1版本。<br/>
-## 一、npm run script
-&emsp;&emsp;官网上的入门教程提供一个简单的例子，首先执行 npm init -y 完成项目初始化，然后通过 npm install webpack webpack-cli --save-dev 命令安装 webpack 以及 webpack-cli，最后修改 package.json 中的 scripts 属性如下：<br/>
+&emsp;&emsp;从`webpack4.0`开始，使用`webpack`的同时需要安装`webpack-cli`。在对`webpack5.0`进行深度解析前，我们先来探究`webpack-cli`的功能以及原理。<br/>
+&emsp;&emsp;本系列文章基于`webpack 5.24.2`版本以及`webpack-cli 4.5.0`版本。<br/>
+## 一、从webpack命令谈起
+&emsp;&emsp;官网上的入门教程提供一个简单的例子，首先执行`npm init -y`完成项目初始化，然后通过`npm install webpack webpack-cli --save-dev`命令安装`webpack`以及`webpack-cli`，最后修改`package.json`中的`scripts`属性如下：<br/>
 ```json
 "scripts": {
     "build": "webpack"
 }
 ```
-&emsp;&emsp;执行 npm run build 命令，会根据平台的不同调用 /node_modules/.bin/ 下不同的对应脚本文件，在类Unix系统下调用 /node_modules/.bin/webpack shell 脚本，在Windows 系统下调用 /node_modules/.bin/webpack.cmd dos文件。<br/>
-&emsp;&emsp;/node_modules/.bin/webpack 源码如下：<br/>
-```js
+&emsp;&emsp;执行`npm run build`命令就会完成简单的打包功能，那么这条命令具体执行的过程是什么呢？我们来详细的看一下。
+&emsp;&emsp;在执行`npm run`命令时会自动新建一个`Shell`，在这个`Shell`里面执行指定的脚本命令。新建的这个`Shell`，会将当前目录的`node_modules/.bin`子目录加入`PATH`变量，执行结束后，再将`PATH`变量恢复原样。也就是说，当前目录的`node_modules/.bin`子目录里面的所有脚本，都可以直接用脚本名调用，而不必加上路径。<br/>
+&emsp;&emsp;在上文示例中执行`npm run build`命令就是执行`node_modules/.bin`下的`webpack`脚本。根据平台的不同调用不同的对应脚本文件，在类Unix系统下调用`/node_modules/.bin/webpack`shell脚本，在Windows系统下调用`/node_modules/.bin/webpack.cmd`dos文件。两个文件的功能是一样的，下面我们选择`Shell`文件来进行分析。<br/>
+```shell
 #!/bin/sh
 basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
 
 case `uname` in
-    *CYGWIN*) basedir=`cygpath -w "$basedir"`;;
+    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
 esac
 
 if [ -x "$basedir/node" ]; then
-  "$basedir/node"  "$basedir/../_webpack@4.30.0@webpack/bin/webpack.js" "$@"
+  "$basedir/node"  "$basedir/../webpack/bin/webpack.js" "$@"
   ret=$?
 else 
-  node  "$basedir/../_webpack@4.30.0@webpack/bin/webpack.js" "$@"
+  node  "$basedir/../webpack/bin/webpack.js" "$@"
   ret=$?
 fi
 exit $ret
 ```
-&emsp;&emsp;/node_modules/.bin/webpack.cmd 源码如下：<br/>
+&emsp;&emsp;这段`shell`的主要功能是使用`node`命令执行`/node_modules`中安装的`webpack.js`文件。在当前情况下就是在`node`环境下执行`/node_modules/webpack/bin/webpack.js`文件。<br/>
+&emsp;&emsp;由此看来，`/bin/webpack.js`就是使用`webpack`打包的入口文件，其主干代码如下：<br/>
 ```js
-@IF EXIST "%~dp0\node.exe" (
-  "%~dp0\node.exe"  "%~dp0\..\_webpack@4.30.0@webpack\bin\webpack.js" %*
-) ELSE (
-  @SETLOCAL
-  @SET PATHEXT=%PATHEXT:;.JS;=;%
-  node  "%~dp0\..\_webpack@4.30.0@webpack\bin\webpack.js" %*
-)
+const runCommand = (command,args) => {/*...*/}
+const isInstalled = packageName => {/*...*/}
+
+const runCli = cli => {
+	const path = require("path")
+	const pkgPath=require.resolve(`${cli.package}/package.json`)
+	const pkg = require(pkgPath)
+	require(path.resolve(path.dirname(pkgPath), pkg.bin[cli.binName]))
+}
+
+const cli = {/*...*/}
+if (!cli.installed) {
+  /*...*/
+} else {
+	runCli(cli)
+}
 ```
-&emsp;&emsp;这两个文件的功能是一样的：使用 node 命令执行 /node_modules 中安装的 webpack 执行文件。例如使用 webpack 4.30.0版本则对应 /node_modules/_webpack@4.30.0@webpack/bin/webpack.js 文件。<br/>
+&emsp;&emsp;我们的主要目的是搞清楚输入命令后的流程，暂时抛开具体细节后面再做讨论。该文件的主要功能就是判断`webpack-cli`是否安装，如果安装则执行`/node_modules/webpack-cli/bin/cli.js`文件。<br/>
+&emsp;&emsp;`cli.js`的核心代码如下所示：<br/>
+```js
+/*...*/
+const runCLI = require('../lib/bootstrap')
+
+if (utils.packageExists('webpack')) {
+  runCLI(process.argv, originalModuleCompile)
+}
+```
+&emsp;&emsp;`cli.js`的主要功能是检测`webpack`是否下载，如果下载则执行`runCLI`函数，该函数实现在`/lib/bootstrap.js`文件中。<br/>
+```js
+const WebpackCLI = require('./webpack-cli')
+const runCLI = async (args,originalModuleCompile) => {
+  /*...*/
+  const cli = new WebpackCLI()
+  await cli.run(args)
+}
+```
+&emsp;&emsp;到此为止，整个流程就比较清晰了：执行`npm script`，实质就是执行`WebpackCLI`的实例对象的`run`方法。<br/>
+&emsp;&emsp;函数`WebpackCLI`的实现在`/lib/webpack-cli.js`中。<br/>
+```js
+class WebpackCLI {
+  constructor() {
+    this.webpack = require('webpack')
+    this.program = program
+    /*...*/
+  }
+}
+```
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
+&emsp;&emsp;<br/>
 ## 二、webpack 包的 /bin/webpack.js
 &emsp;&emsp;webpack包的 /bin/webpack.js 的功能是检测是否安装 webpack-cli 与 webpack-command 包，然后根据具体情况分别进行处理。<br/>
 &emsp;&emsp;webpack4.0 强制要求必须使用一种 CLI 包，官网上甚至直接说必须安装 webpack-cli，因为 webpack-command 现在很不推荐使用，源码中保留这种判断是为了防止依然有用户使用 webpack-command 的情况。<br/>
