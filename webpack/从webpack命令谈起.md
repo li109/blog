@@ -1,5 +1,5 @@
-# webpack4.0源码学习（一）：从webpack命令谈起
-&emsp;&emsp;在开发基于 webpack 构建的项目时，一般都使用 npm run script 命令行的方式来完成启动本地服务器、打包等功能。探究从输入命令到最终完成构建的过程，是学习 webpack4.0 源码不错的突破口。<br/>
+# webpack5.0源码解析（一）：webpack-cli
+&emsp;&emsp;在开发基于 webpack 构建的项目时，一般都使用 npm run script 命令行的方式来完成启动本地服务器、打包等功能。探究从输入命令到最终完成构建的过程，是学习 webpack5.0 源码不错的突破口。<br/>
 &emsp;&emsp;本系列文章基于 webpack 4.30.0 版本以及 webpack-cli 3.3.1版本。<br/>
 ## 一、npm run script
 &emsp;&emsp;官网上的入门教程提供一个简单的例子，首先执行 npm init -y 完成项目初始化，然后通过 npm install webpack webpack-cli --save-dev 命令安装 webpack 以及 webpack-cli，最后修改 package.json 中的 scripts 属性如下：<br/>
